@@ -12,16 +12,14 @@ export default function HomePage() {
       </nav>
 
       <section className="hero">
-        <p className="eyebrow">Conference conversation, without the installation</p>
-        <h1>The room where your event keeps talking.</h1>
+        <p className="eyebrow">Communities, without the installation</p>
+        <h1>The room where your community keeps talking.</h1>
         <p className="lede">
-          Join with your work email, find the people and rooms that matter, and move from text to live conversation in one browser tab.
+          Join with your email, find the people and rooms that matter, and move from text to live conversation in one browser tab.
         </p>
 
         <div className="actions">
-          <button type="button" disabled>
-            Request early access
-          </button>
+          <Link className="primary-action" href="/sign-in">Enter the private beta</Link>
           <ServiceStatus />
         </div>
       </section>
@@ -30,17 +28,17 @@ export default function HomePage() {
         <article>
           <span>01</span>
           <h2>Arrive quickly</h2>
-          <p>A verified work email and a username are all a member needs.</p>
+          <p>A verified email and a global handle are all a member needs.</p>
         </article>
         <article>
           <span>02</span>
           <h2>Stay in context</h2>
-          <p>Rooms preserve the questions, people, and decisions around every session.</p>
+          <p>Rooms preserve the questions, people, and decisions around every community.</p>
         </article>
         <article>
           <span>03</span>
           <h2>Speak when it matters</h2>
-          <p>Move into voice, video, or a moderated stage without leaving the community.</p>
+          <p>Move into voice or video without leaving the conversation.</p>
         </article>
       </section>
     </main>

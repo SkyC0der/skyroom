@@ -6,6 +6,56 @@ info:
 servers:
   - url: /api/v1
 paths:
+  /auth/codes:
+    post:
+      operationId: requestAuthenticationCode
+      summary: Send a six-digit email verification code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailCodeRequest"
+      responses:
+        "202":
+          description: The request was accepted and a code was sent.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          description: A code was requested too recently.
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+        "502":
+          description: The email provider could not accept the message.
+  /auth/verify:
+    post:
+      operationId: verifyAuthenticationCode
+      summary: Verify an email code and establish a session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailCodeVerification"
+      responses:
+        "200":
+          description: The code was valid. A session cookie is set.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthenticatedUser"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: The code is invalid, expired, or already used.
+        "429":
+          description: The verification challenge has been locked.
   /health:
     get:
       operationId: getHealth
@@ -34,7 +84,69 @@ paths:
                     type: string
                     const: alive
 components:
+  responses:
+    BadRequest:
+      description: The request body or one of its fields is invalid.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
   schemas:
+    EmailCodeRequest:
+      type: object
+      additionalProperties: false
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+    EmailCodeVerification:
+      type: object
+      additionalProperties: false
+      required: [email, code]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        code:
+          type: string
+          pattern: "^[0-9]{6}$"
+    AuthenticatedUser:
+      type: object
+      required: [user, needs_handle]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        needs_handle:
+          type: boolean
+    User:
+      type: object
+      required: [id, email, handle, email_verified_at, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        handle:
+          oneOf:
+            - type: string
+            - type: "null"
+        email_verified_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
     Health:
       type: object
       required: [status, time]

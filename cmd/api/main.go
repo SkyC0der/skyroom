@@ -10,16 +10,30 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/SkyC0der/skyroom/internal/identity"
 	"github.com/SkyC0der/skyroom/internal/platform/httpserver"
 )
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	addr := envOrDefault("HTTP_ADDR", ":8080")
+	appEnv := envOrDefault("APP_ENV", "development")
+	auth := identity.NewService(
+		identity.NewMemoryStore(),
+		identity.SMTPCodeSender{
+			Address: envOrDefault("SMTP_ADDR", "localhost:1025"),
+			From:    envOrDefault("EMAIL_FROM", "hello@rooms.studioeco.co"),
+		},
+		envOrDefault("AUTH_HASH_SECRET", "development-only-change-me"),
+	)
 
 	server := &http.Server{
-		Addr:              addr,
-		Handler:           httpserver.New(logger, envOrDefault("WEB_ORIGIN", "http://localhost:3000")),
+		Addr: addr,
+		Handler: httpserver.New(
+			logger,
+			envOrDefault("WEB_ORIGIN", "http://localhost:3000"),
+			httpserver.WithIdentity(auth, appEnv != "development"),
+		),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      15 * time.Second,

@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/SkyC0der/skyroom/internal/identity"
 )
 
 type healthResponse struct {
@@ -13,12 +15,46 @@ type healthResponse struct {
 	Time   string `json:"time"`
 }
 
-func New(logger *slog.Logger, webOrigin string) http.Handler {
+type config struct {
+	identity      *identity.Service
+	secureCookies bool
+}
+
+type Option func(*config)
+
+func WithIdentity(service *identity.Service, secureCookies bool) Option {
+	return func(config *config) {
+		config.identity = service
+		config.secureCookies = secureCookies
+	}
+}
+
+func New(logger *slog.Logger, webOrigin string, options ...Option) http.Handler {
+	configuration := config{}
+	for _, option := range options {
+		option(&configuration)
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/health", health)
 	mux.HandleFunc("GET /api/v1/health/live", live)
+	if configuration.identity != nil {
+		auth := authHandlers{service: configuration.identity, secureCookies: configuration.secureCookies}
+		mux.HandleFunc("POST /api/v1/auth/codes", auth.requestCode)
+		mux.HandleFunc("POST /api/v1/auth/verify", auth.verifyCode)
+	}
 
 	return recoverPanic(logger, requestLog(logger, cors(webOrigin, mux)))
+}
+
+func decodeJSON(w http.ResponseWriter, r *http.Request, destination any) bool {
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16_384))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(destination); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_request"})
+		return false
+	}
+	return true
 }
 
 func health(w http.ResponseWriter, _ *http.Request) {

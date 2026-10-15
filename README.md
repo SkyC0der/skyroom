@@ -1,6 +1,6 @@
 # Skyroom
 
-Skyroom is a low-friction, web-first communications platform for conferences and professional communities. Members verify a work email, choose a community-specific username, join rooms, exchange durable messages, and participate in live audio or video.
+Skyroom is a low-friction, web-first communications platform for persistent communities. Members verify an email, choose a unique global Handle, join Communities and Rooms, exchange durable Messages and DMs, and participate in live audio or video.
 
 The initial deployment is intentionally small: a static Next.js client and one Go application behind Caddy. Managed PostgreSQL, LiveKit, Resend, and Cloudflare R2 keep durable data and media outside the VPS. The module boundaries in `docs/SYSTEM_DESIGN.md` preserve a path to split realtime and worker processes when measured load requires it.
 
@@ -25,7 +25,13 @@ docs/                     Product and system-design documents
 
 ## Local development
 
-Run the API:
+Start local PostgreSQL and Mailpit:
+
+```bash
+docker compose -f platform/deployment/compose.dev.yaml up -d
+```
+
+Mailpit's local inbox is available at `http://localhost:8025`. Then run the API:
 
 ```bash
 go run ./cmd/api
@@ -50,7 +56,7 @@ npm run lint
 npm run build:web
 ```
 
-The first endpoint is `GET /api/v1/health`, defined in `contracts/openapi.yaml`.
+The first functional endpoints are `POST /api/v1/auth/codes` and `POST /api/v1/auth/verify`, defined in `contracts/openapi.yaml`. The current authentication store is in memory while the PostgreSQL adapter is connected; the migration establishing its durable schema is in `database/migrations/000001_identity.up.sql`.
 
 ## Deployment
 

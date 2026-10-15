@@ -4,7 +4,7 @@ import "./styles.css";
 
 export const metadata: Metadata = {
   title: "Skyroom",
-  description: "The room where your conference keeps talking.",
+  description: "Persistent communities for text, voice, and video.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
