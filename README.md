@@ -67,3 +67,16 @@ docker compose -f platform/deployment/compose.yaml up --build
 ```
 
 The web client will use `rooms.studioeco.co`; the VPS API will use `api.rooms.studioeco.co`. Copy `platform/deployment/production.env.example` to `platform/deployment/.env` on the VPS and replace every placeholder before starting Compose. Secrets belong in VPS environment configuration and must never be committed.
+
+### Staging pipeline
+
+`staging` is currently the only hosted environment. Every push to `staging` runs CI (`.github/workflows/deploy-staging.yml` calls `ci.yml`) and, if it passes, deploys:
+
+- **API** — GitHub Actions connects over SSH with a CI-only key that is pinned in `authorized_keys` to the forced command `/home/skyroom/bin/skyroom-deploy` (a copy of `platform/deployment/vps-deploy-wrapper.sh`). It accepts only `deploy <sha>` for commits on `origin/staging`, checks that commit out, and runs `platform/deployment/deploy.sh`, which rebuilds and health-checks the stack.
+- **Web** — Vercel builds `apps/web` from the `staging` branch and serves it on `rooms.studioeco.co`.
+
+Repository secrets: `VPS_HOST`, `VPS_SSH_KEY` (CI private key), `VPS_KNOWN_HOSTS` (pinned host key). If the wrapper changes, reinstall it on the VPS:
+
+```bash
+install -m 755 platform/deployment/vps-deploy-wrapper.sh /home/skyroom/bin/skyroom-deploy
+```
