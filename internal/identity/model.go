@@ -47,9 +47,11 @@ type Session struct {
 type Store interface {
 	CreateChallenge(context.Context, Challenge, time.Duration) error
 	DeleteChallenge(context.Context, string) error
-	VerifyChallenge(context.Context, string, []byte, time.Time) error
-	FindOrCreateUser(context.Context, string, time.Time) (User, error)
-	CreateSession(context.Context, Session) error
+	// CompleteVerification checks the latest challenge for the email and, on a
+	// matching code, atomically consumes it, finds or creates the User, and
+	// stores the Session with its UserID set. A mismatched code still durably
+	// records the failed attempt.
+	CompleteVerification(ctx context.Context, email string, codeHash []byte, now time.Time, session Session) (User, error)
 }
 
 type CodeSender interface {

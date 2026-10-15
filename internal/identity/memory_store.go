@@ -53,58 +53,46 @@ func (s *MemoryStore) DeleteChallenge(_ context.Context, challengeID string) err
 	return nil
 }
 
-func (s *MemoryStore) VerifyChallenge(_ context.Context, email string, codeHash []byte, now time.Time) error {
+func (s *MemoryStore) CompleteVerification(_ context.Context, email string, codeHash []byte, now time.Time, session Session) (User, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	challenges := s.challenges[email]
 	if len(challenges) == 0 {
-		return ErrInvalidCode
+		return User{}, ErrInvalidCode
 	}
 	challenge := &challenges[len(challenges)-1]
 	if challenge.ConsumedAt != nil {
-		return ErrChallengeConsumed
+		return User{}, ErrChallengeConsumed
 	}
 	if !now.Before(challenge.ExpiresAt) {
-		return ErrChallengeExpired
+		return User{}, ErrChallengeExpired
 	}
 	if challenge.AttemptsUsed >= challenge.MaxAttempts {
-		return ErrTooManyAttempts
+		return User{}, ErrTooManyAttempts
 	}
 	if !hmac.Equal(challenge.CodeHash, codeHash) {
 		challenge.AttemptsUsed++
 		if challenge.AttemptsUsed >= challenge.MaxAttempts {
-			return ErrTooManyAttempts
+			return User{}, ErrTooManyAttempts
 		}
-		return ErrInvalidCode
+		return User{}, ErrInvalidCode
 	}
-	challenge.ConsumedAt = &now
-	s.challenges[email][len(challenges)-1] = *challenge
-	return nil
-}
 
-func (s *MemoryStore) FindOrCreateUser(_ context.Context, email string, now time.Time) (User, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if user, exists := s.users[email]; exists {
-		return user, nil
+	user, exists := s.users[email]
+	if !exists {
+		userID, err := newID()
+		if err != nil {
+			return User{}, err
+		}
+		user = User{
+			ID: userID, Email: email, EmailNormalized: email,
+			EmailVerifiedAt: now, CreatedAt: now,
+		}
+		s.users[email] = user
 	}
-	userID, err := newID()
-	if err != nil {
-		return User{}, err
-	}
-	user := User{
-		ID: userID, Email: email, EmailNormalized: email,
-		EmailVerifiedAt: now, CreatedAt: now,
-	}
-	s.users[email] = user
-	return user, nil
-}
-
-func (s *MemoryStore) CreateSession(_ context.Context, session Session) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	session.UserID = user.ID
 	s.sessions[session.ID] = session
-	return nil
+	challenge.ConsumedAt = &now
+	return user, nil
 }

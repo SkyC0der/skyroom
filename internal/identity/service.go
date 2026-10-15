@@ -87,27 +87,21 @@ func (s *Service) VerifyCode(ctx context.Context, email, code string) (VerifiedS
 	}
 
 	now := s.now().UTC()
-	if err := s.store.VerifyChallenge(ctx, normalized, s.hashCode(normalized, code), now); err != nil {
-		return VerifiedSession{}, err
-	}
-	user, err := s.store.FindOrCreateUser(ctx, normalized, now)
-	if err != nil {
-		return VerifiedSession{}, fmt.Errorf("find or create user: %w", err)
-	}
 	rawToken, tokenHash, err := generateSessionToken()
 	if err != nil {
 		return VerifiedSession{}, fmt.Errorf("generate session token: %w", err)
 	}
-	expiresAt := now.Add(sessionLifetime)
 	sessionID, err := newID()
 	if err != nil {
 		return VerifiedSession{}, fmt.Errorf("generate session ID: %w", err)
 	}
-	if err := s.store.CreateSession(ctx, Session{
-		ID: sessionID, UserID: user.ID, TokenHash: tokenHash,
+	expiresAt := now.Add(sessionLifetime)
+	user, err := s.store.CompleteVerification(ctx, normalized, s.hashCode(normalized, code), now, Session{
+		ID: sessionID, TokenHash: tokenHash,
 		ExpiresAt: expiresAt, LastSeenAt: now, CreatedAt: now,
-	}); err != nil {
-		return VerifiedSession{}, fmt.Errorf("create session: %w", err)
+	})
+	if err != nil {
+		return VerifiedSession{}, err
 	}
 	return VerifiedSession{User: user, Token: rawToken, ExpiresAt: expiresAt}, nil
 }
