@@ -1,0 +1,12 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+.next/
+apps/web/out/
+node_modules/
+coverage/
+dist/
+bin/
+*.log
+*.tsbuildinfo

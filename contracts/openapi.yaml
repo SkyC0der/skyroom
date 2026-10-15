@@ -1,0 +1,47 @@
+openapi: 3.1.0
+info:
+  title: Skyroom HTTP API
+  version: 0.1.0
+  description: The versioned HTTP contract shared by the Go application and TypeScript client.
+servers:
+  - url: /api/v1
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Report application readiness
+      responses:
+        "200":
+          description: The application is ready to serve requests.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+  /health/live:
+    get:
+      operationId: getLiveness
+      summary: Report process liveness
+      responses:
+        "200":
+          description: The process is alive.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    const: alive
+components:
+  schemas:
+    Health:
+      type: object
+      required: [status, time]
+      properties:
+        status:
+          type: string
+          const: ok
+        time:
+          type: string
+          format: date-time

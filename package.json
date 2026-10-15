@@ -1,0 +1,16 @@
+{
+  "name": "skyroom",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "build:web": "npm run build --workspace @skyroom/web",
+    "dev:web": "npm run dev --workspace @skyroom/web",
+    "lint": "npm run lint --workspace @skyroom/web",
+    "typecheck": "npm run typecheck --workspace @skyroom/web"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

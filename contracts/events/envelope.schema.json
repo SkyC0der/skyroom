@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rooms.studioeco.co/contracts/events/envelope.schema.json",
+  "title": "Skyroom realtime event envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["event_id", "type", "occurred_at", "schema_version", "payload"],
+  "properties": {
+    "event_id": { "type": "string", "format": "uuid" },
+    "type": { "type": "string", "minLength": 1 },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "community_id": { "type": ["string", "null"], "format": "uuid" },
+    "room_id": { "type": ["string", "null"], "format": "uuid" },
+    "actor_id": { "type": ["string", "null"], "format": "uuid" },
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "payload": { "type": "object" }
+  }
+}
