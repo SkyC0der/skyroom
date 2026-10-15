@@ -66,4 +66,4 @@ The production-shaped stack builds with:
 docker compose -f platform/deployment/compose.yaml up --build
 ```
 
-The public deployment will use `rooms.studioeco.co`. Secrets belong in VPS environment configuration and must never be committed.
+The web client will use `rooms.studioeco.co`; the VPS API will use `api.rooms.studioeco.co`. Copy `platform/deployment/production.env.example` to `platform/deployment/.env` on the VPS and replace every placeholder before starting Compose. Secrets belong in VPS environment configuration and must never be committed.

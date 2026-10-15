@@ -1,15 +1,6 @@
-{$SITE_ADDRESS:localhost} {
+{$API_ADDRESS:localhost} {
 	encode zstd gzip
-
-	handle /api/* {
-		reverse_proxy api:8080
-	}
-
-	handle {
-		root * /srv
-		try_files {path} {path}.html {path}/index.html
-		file_server
-	}
+	reverse_proxy api:8080
 
 	header {
 		X-Content-Type-Options nosniff
