@@ -42,9 +42,23 @@ func New(logger *slog.Logger, webOrigin string, options ...Option) http.Handler 
 		auth := authHandlers{service: configuration.identity, secureCookies: configuration.secureCookies}
 		mux.HandleFunc("POST /api/v1/auth/codes", auth.requestCode)
 		mux.HandleFunc("POST /api/v1/auth/verify", auth.verifyCode)
+		mux.HandleFunc("GET /api/v1/auth/session", auth.session)
+		mux.HandleFunc("DELETE /api/v1/auth/session", auth.signOut)
+		mux.HandleFunc("PUT /api/v1/users/me/handle", auth.claimHandle)
 	}
 
-	return recoverPanic(logger, requestLog(logger, cors(webOrigin, mux)))
+	return recoverPanic(logger, requestLog(logger, cors(webOrigin, enforceOrigin(webOrigin, mux))))
+}
+
+func enforceOrigin(origin string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestOrigin := r.Header.Get("Origin")
+		if requestOrigin != "" && requestOrigin != origin && r.Method != http.MethodOptions {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "origin_not_allowed"})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, destination any) bool {
@@ -80,6 +94,7 @@ func cors(origin string, next http.Handler) http.Handler {
 		if requestOrigin != "" && requestOrigin == origin {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Set("Access-Control-Expose-Headers", "Retry-After")
 			w.Header().Set("Vary", "Origin")
 		}
 		if r.Method == http.MethodOptions {

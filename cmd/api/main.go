@@ -10,21 +10,37 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/SkyC0der/skyroom/database/migrations"
 	"github.com/SkyC0der/skyroom/internal/identity"
 	"github.com/SkyC0der/skyroom/internal/platform/httpserver"
+	platformpostgres "github.com/SkyC0der/skyroom/internal/platform/postgres"
 )
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	addr := envOrDefault("HTTP_ADDR", ":8080")
 	appEnv := envOrDefault("APP_ENV", "development")
+	authSecret := envOrDefault("AUTH_HASH_SECRET", "development-only-change-me")
+	if appEnv != "development" && len(authSecret) < 32 {
+		logger.Error("AUTH_HASH_SECRET must contain at least 32 bytes outside development")
+		os.Exit(1)
+	}
+	store, closeStore, err := identityStore(logger, appEnv, os.Getenv("DATABASE_URL"))
+	if err != nil {
+		logger.Error("initialize identity store", "error", err)
+		os.Exit(1)
+	}
+	defer closeStore()
 	auth := identity.NewService(
-		identity.NewMemoryStore(),
+		store,
 		identity.SMTPCodeSender{
 			Address: envOrDefault("SMTP_ADDR", "localhost:1025"),
 			From:    envOrDefault("EMAIL_FROM", "hello@rooms.studioeco.co"),
 		},
-		envOrDefault("AUTH_HASH_SECRET", "development-only-change-me"),
+		authSecret,
 	)
 
 	server := &http.Server{
@@ -60,6 +76,41 @@ func main() {
 		logger.Error("graceful shutdown failed", "error", err)
 		os.Exit(1)
 	}
+}
+
+func identityStore(logger *slog.Logger, appEnv, databaseURL string) (identity.Store, func(), error) {
+	if databaseURL == "" {
+		if appEnv != "development" {
+			return nil, func() {}, errors.New("DATABASE_URL is required outside development")
+		}
+		logger.Warn("DATABASE_URL is empty; identity state will be in memory")
+		return identity.NewMemoryStore(), func() {}, nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	connection, err := pgx.Connect(ctx, databaseURL)
+	if err != nil {
+		return nil, func() {}, err
+	}
+	ran, err := platformpostgres.Migrate(ctx, connection, migrations.FS)
+	_ = connection.Close(ctx)
+	if err != nil {
+		return nil, func() {}, err
+	}
+	if len(ran) > 0 {
+		logger.Info("database migrations applied", "migrations", ran)
+	}
+
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		return nil, func() {}, err
+	}
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+		return nil, func() {}, err
+	}
+	return identity.NewPostgresStore(pool), pool.Close, nil
 }
 
 func envOrDefault(key, fallback string) string {

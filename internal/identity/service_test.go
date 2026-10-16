@@ -90,3 +90,82 @@ func TestInvalidEmailIsRejected(t *testing.T) {
 		t.Fatalf("expected invalid email, got %v", err)
 	}
 }
+
+func TestSessionCanAuthenticateClaimHandleAndSignOut(t *testing.T) {
+	t.Parallel()
+
+	sender := &capturedSender{}
+	service := NewService(NewMemoryStore(), sender, "test-secret")
+	if err := service.RequestCode(context.Background(), "member@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	verified, err := service.VerifyCode(context.Background(), "member@example.com", sender.code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	authenticated, err := service.Authenticate(context.Background(), verified.Token)
+	if err != nil {
+		t.Fatalf("authenticate: %v", err)
+	}
+	if authenticated.User.Email != "member@example.com" {
+		t.Fatalf("unexpected authenticated user: %+v", authenticated.User)
+	}
+	if authenticated.ExpiresAt.Sub(time.Now().UTC()) < sessionLifetime-time.Minute {
+		t.Fatalf("expected rolling session expiry, got %v", authenticated.ExpiresAt)
+	}
+
+	authenticated, err = service.ClaimHandle(context.Background(), verified.Token, "Sky.Room")
+	if err != nil {
+		t.Fatalf("claim handle: %v", err)
+	}
+	if authenticated.User.Handle == nil || *authenticated.User.Handle != "sky.room" {
+		t.Fatalf("expected canonical handle, got %+v", authenticated.User.Handle)
+	}
+
+	if err := service.SignOut(context.Background(), verified.Token); err != nil {
+		t.Fatalf("sign out: %v", err)
+	}
+	if _, err := service.Authenticate(context.Background(), verified.Token); !errors.Is(err, ErrUnauthenticated) {
+		t.Fatalf("expected revoked session to be rejected, got %v", err)
+	}
+}
+
+func TestHandleValidationUniquenessAndFreshVerification(t *testing.T) {
+	t.Parallel()
+
+	store := NewMemoryStore()
+	sender := &capturedSender{}
+	service := NewService(store, sender, "test-secret")
+	now := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
+	service.now = func() time.Time { return now }
+
+	verify := func(email string) string {
+		t.Helper()
+		if err := service.RequestCode(context.Background(), email); err != nil {
+			t.Fatal(err)
+		}
+		verified, err := service.VerifyCode(context.Background(), email, sender.code)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return verified.Token
+	}
+
+	firstToken := verify("first@example.com")
+	if _, err := service.ClaimHandle(context.Background(), firstToken, "bad handle"); !errors.Is(err, ErrInvalidHandle) {
+		t.Fatalf("expected invalid handle, got %v", err)
+	}
+	if _, err := service.ClaimHandle(context.Background(), firstToken, "member_one"); err != nil {
+		t.Fatal(err)
+	}
+	secondToken := verify("second@example.com")
+	if _, err := service.ClaimHandle(context.Background(), secondToken, "MEMBER_ONE"); !errors.Is(err, ErrHandleTaken) {
+		t.Fatalf("expected handle conflict, got %v", err)
+	}
+
+	now = now.Add(freshVerificationLifetime + time.Second)
+	if _, err := service.ClaimHandle(context.Background(), secondToken, "member_two"); !errors.Is(err, ErrVerificationStale) {
+		t.Fatalf("expected fresh verification requirement, got %v", err)
+	}
+}

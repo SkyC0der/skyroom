@@ -34,7 +34,7 @@ docker compose -f platform/deployment/compose.dev.yaml up -d
 Mailpit's local inbox is available at `http://localhost:8025`. Then run the API:
 
 ```bash
-go run ./cmd/api
+DATABASE_URL='postgres://skyroom:skyroom-local@localhost:5432/skyroom?sslmode=disable' go run ./cmd/api
 ```
 
 In another terminal, run the web client:
@@ -56,7 +56,7 @@ npm run lint
 npm run build:web
 ```
 
-The first functional endpoints are `POST /api/v1/auth/codes` and `POST /api/v1/auth/verify`, defined in `contracts/openapi.yaml`. The current authentication store is in memory while the PostgreSQL adapter is connected; the migration establishing its durable schema is in `database/migrations/000001_identity.up.sql`.
+The identity endpoints are defined in `contracts/openapi.yaml`. They cover verification codes, session restoration and revocation, and global Handle claims. PostgreSQL is used whenever `DATABASE_URL` is set; development falls back to memory only when it is absent. The API applies embedded migrations at startup.
 
 ## Deployment
 

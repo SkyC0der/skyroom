@@ -14,7 +14,7 @@ Goal: validate the complete activation path on one Go process and PostgreSQL.
 
 **Mode:** AFK  
 **Blocked by:** Nothing  
-**Status:** In progress
+**Status:** Complete
 
 - Request a six-digit code for any valid email.
 - Expire codes after 10 minutes; enforce resend and attempt limits.
@@ -27,6 +27,7 @@ Goal: validate the complete activation path on one Go process and PostgreSQL.
 
 **Mode:** AFK  
 **Blocked by:** M1.1
+**Status:** Complete
 
 - Require a Handle before Community participation.
 - Normalize and enforce case-insensitive uniqueness.

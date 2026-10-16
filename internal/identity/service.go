@@ -14,10 +14,11 @@ import (
 )
 
 const (
-	codeLifetime    = 10 * time.Minute
-	resendInterval  = 60 * time.Second
-	sessionLifetime = 30 * 24 * time.Hour
-	maxAttempts     = 5
+	codeLifetime              = 10 * time.Minute
+	resendInterval            = 60 * time.Second
+	sessionLifetime           = 30 * 24 * time.Hour
+	freshVerificationLifetime = 15 * time.Minute
+	maxAttempts               = 5
 )
 
 type clock func() time.Time
@@ -33,6 +34,51 @@ type VerifiedSession struct {
 	User      User
 	Token     string
 	ExpiresAt time.Time
+}
+
+func (s *Service) Authenticate(ctx context.Context, token string) (AuthenticatedSession, error) {
+	tokenHash, err := hashSessionToken(token)
+	if err != nil {
+		return AuthenticatedSession{}, ErrUnauthenticated
+	}
+	now := s.now().UTC()
+	expiresAt := now.Add(sessionLifetime)
+	user, session, err := s.store.AuthenticateSession(ctx, tokenHash, now, expiresAt)
+	if err != nil {
+		return AuthenticatedSession{}, err
+	}
+	return AuthenticatedSession{
+		User: user, SessionID: session.ID, ExpiresAt: session.ExpiresAt,
+		VerifiedAt: session.CreatedAt,
+	}, nil
+}
+
+func (s *Service) SignOut(ctx context.Context, token string) error {
+	tokenHash, err := hashSessionToken(token)
+	if err != nil {
+		return nil
+	}
+	return s.store.RevokeSession(ctx, tokenHash, s.now().UTC())
+}
+
+func (s *Service) ClaimHandle(ctx context.Context, token, handle string) (AuthenticatedSession, error) {
+	authenticated, err := s.Authenticate(ctx, token)
+	if err != nil {
+		return AuthenticatedSession{}, err
+	}
+	if s.now().UTC().Sub(authenticated.VerifiedAt) > freshVerificationLifetime {
+		return AuthenticatedSession{}, ErrVerificationStale
+	}
+	canonical, err := normalizeHandle(handle)
+	if err != nil {
+		return AuthenticatedSession{}, err
+	}
+	user, err := s.store.ClaimHandle(ctx, authenticated.User.ID, canonical, canonical, s.now().UTC())
+	if err != nil {
+		return AuthenticatedSession{}, err
+	}
+	authenticated.User = user
+	return authenticated, nil
 }
 
 func NewService(store Store, sender CodeSender, secret string) *Service {
@@ -146,6 +192,32 @@ func generateSessionToken() (string, []byte, error) {
 	token := base64.RawURLEncoding.EncodeToString(raw)
 	hash := sha256.Sum256([]byte(token))
 	return token, hash[:], nil
+}
+
+func hashSessionToken(token string) ([]byte, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(token)
+	if err != nil || len(raw) != 32 {
+		return nil, ErrUnauthenticated
+	}
+	hash := sha256.Sum256([]byte(token))
+	return hash[:], nil
+}
+
+func normalizeHandle(value string) (string, error) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if len(value) < 3 || len(value) > 32 {
+		return "", ErrInvalidHandle
+	}
+	for index, character := range value {
+		if character >= 'a' && character <= 'z' || character >= '0' && character <= '9' {
+			continue
+		}
+		if (character == '_' || character == '.') && index > 0 && index < len(value)-1 {
+			continue
+		}
+		return "", ErrInvalidHandle
+	}
+	return value, nil
 }
 
 func newID() (string, error) {

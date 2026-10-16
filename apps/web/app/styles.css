@@ -332,6 +332,13 @@ button:disabled {
   line-height: 1.4;
 }
 
+.form-notice {
+  margin: 14px 0 0;
+  color: #16834d;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
 .auth-submit,
 .auth-back {
   width: 100%;

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -179,6 +180,67 @@ func findOrCreateUser(ctx context.Context, tx pgx.Tx, email string, now time.Tim
 	user, err = scan(tx.QueryRow(ctx, `SELECT `+columns+` FROM users WHERE email_normalized = $1`, email))
 	if err != nil {
 		return User{}, fmt.Errorf("read existing user: %w", err)
+	}
+	return user, nil
+}
+
+func (s *PostgresStore) AuthenticateSession(ctx context.Context, tokenHash []byte, now, expiresAt time.Time) (User, Session, error) {
+	var user User
+	var session Session
+	err := s.pool.QueryRow(ctx, `
+		UPDATE sessions AS session
+		SET last_seen_at = $2, expires_at = $3
+		FROM users AS app_user
+		WHERE session.token_hash = $1
+		  AND session.user_id = app_user.id
+		  AND session.revoked_at IS NULL
+		  AND session.expires_at > $2
+		RETURNING session.id::text, session.user_id::text, session.token_hash,
+		          session.expires_at, session.last_seen_at, session.created_at,
+		          app_user.id::text, app_user.email, app_user.email_normalized,
+		          app_user.handle, app_user.email_verified_at, app_user.created_at`,
+		tokenHash, now, expiresAt,
+	).Scan(
+		&session.ID, &session.UserID, &session.TokenHash, &session.ExpiresAt,
+		&session.LastSeenAt, &session.CreatedAt, &user.ID, &user.Email,
+		&user.EmailNormalized, &user.Handle, &user.EmailVerifiedAt, &user.CreatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return User{}, Session{}, ErrUnauthenticated
+	}
+	if err != nil {
+		return User{}, Session{}, fmt.Errorf("authenticate session: %w", err)
+	}
+	return user, session, nil
+}
+
+func (s *PostgresStore) RevokeSession(ctx context.Context, tokenHash []byte, now time.Time) error {
+	if _, err := s.pool.Exec(ctx, `
+		UPDATE sessions SET revoked_at = $2
+		WHERE token_hash = $1 AND revoked_at IS NULL`, tokenHash, now); err != nil {
+		return fmt.Errorf("revoke session: %w", err)
+	}
+	return nil
+}
+
+func (s *PostgresStore) ClaimHandle(ctx context.Context, userID, handle, normalized string, now time.Time) (User, error) {
+	var user User
+	err := s.pool.QueryRow(ctx, `
+		UPDATE users
+		SET handle = $2, handle_normalized = $3, updated_at = $4
+		WHERE id = $1
+		RETURNING id::text, email, email_normalized, handle, email_verified_at, created_at`,
+		userID, handle, normalized, now,
+	).Scan(&user.ID, &user.Email, &user.EmailNormalized, &user.Handle, &user.EmailVerifiedAt, &user.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return User{}, ErrUnauthenticated
+	}
+	var databaseError *pgconn.PgError
+	if errors.As(err, &databaseError) && databaseError.Code == "23505" && databaseError.ConstraintName == "users_handle_normalized_key" {
+		return User{}, ErrHandleTaken
+	}
+	if err != nil {
+		return User{}, fmt.Errorf("claim handle: %w", err)
 	}
 	return user, nil
 }

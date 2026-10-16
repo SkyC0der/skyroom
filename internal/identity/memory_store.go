@@ -3,6 +3,7 @@ package identity
 import (
 	"context"
 	"crypto/hmac"
+	"strings"
 	"sync"
 	"time"
 )
@@ -95,4 +96,54 @@ func (s *MemoryStore) CompleteVerification(_ context.Context, email string, code
 	s.sessions[session.ID] = session
 	challenge.ConsumedAt = &now
 	return user, nil
+}
+
+func (s *MemoryStore) AuthenticateSession(_ context.Context, tokenHash []byte, now, expiresAt time.Time) (User, Session, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for id, session := range s.sessions {
+		if !hmac.Equal(session.TokenHash, tokenHash) || !now.Before(session.ExpiresAt) {
+			continue
+		}
+		for _, user := range s.users {
+			if user.ID == session.UserID {
+				session.LastSeenAt = now
+				session.ExpiresAt = expiresAt
+				s.sessions[id] = session
+				return user, session, nil
+			}
+		}
+	}
+	return User{}, Session{}, ErrUnauthenticated
+}
+
+func (s *MemoryStore) RevokeSession(_ context.Context, tokenHash []byte, _ time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, session := range s.sessions {
+		if hmac.Equal(session.TokenHash, tokenHash) {
+			delete(s.sessions, id)
+			break
+		}
+	}
+	return nil
+}
+
+func (s *MemoryStore) ClaimHandle(_ context.Context, userID, handle, normalized string, _ time.Time) (User, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, user := range s.users {
+		if user.Handle != nil && strings.EqualFold(*user.Handle, normalized) && user.ID != userID {
+			return User{}, ErrHandleTaken
+		}
+	}
+	for email, user := range s.users {
+		if user.ID == userID {
+			user.Handle = &handle
+			s.users[email] = user
+			return user, nil
+		}
+	}
+	return User{}, ErrUnauthenticated
 }

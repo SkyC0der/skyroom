@@ -40,4 +40,7 @@ func TestCORSAllowsConfiguredDevelopmentOrigin(t *testing.T) {
 	if got := response.Header().Get("Access-Control-Allow-Origin"); got != "http://localhost:3000" {
 		t.Fatalf("expected configured CORS origin, got %q", got)
 	}
+	if got := response.Header().Get("Access-Control-Expose-Headers"); got != "Retry-After" {
+		t.Fatalf("expected Retry-After to be exposed, got %q", got)
+	}
 }

@@ -56,6 +56,54 @@ paths:
           description: The code is invalid, expired, or already used.
         "429":
           description: The verification challenge has been locked.
+  /auth/session:
+    get:
+      operationId: getAuthenticationSession
+      summary: Restore the current session and roll its expiry forward
+      responses:
+        "200":
+          description: The session is active.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthenticatedUser"
+        "401":
+          description: The session is absent, expired, or revoked.
+    delete:
+      operationId: revokeAuthenticationSession
+      summary: Revoke the current session and clear its cookie
+      responses:
+        "204":
+          description: The current session is no longer active.
+  /users/me/handle:
+    put:
+      operationId: setCurrentUserHandle
+      summary: Claim or change the current User's unique global Handle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HandleClaim"
+      responses:
+        "200":
+          description: The Handle was saved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthenticatedUser"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: The session is absent, expired, or revoked.
+        "403":
+          description: A fresh email verification is required.
+        "409":
+          description: The normalized Handle is already claimed.
   /health:
     get:
       operationId: getHealth
@@ -113,6 +161,16 @@ components:
         code:
           type: string
           pattern: "^[0-9]{6}$"
+    HandleClaim:
+      type: object
+      additionalProperties: false
+      required: [handle]
+      properties:
+        handle:
+          type: string
+          minLength: 3
+          maxLength: 32
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._]{1,30}[A-Za-z0-9]$"
     AuthenticatedUser:
       type: object
       required: [user, needs_handle]

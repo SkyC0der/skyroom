@@ -13,6 +13,10 @@ var (
 	ErrChallengeConsumed = errors.New("verification challenge consumed")
 	ErrTooManyAttempts   = errors.New("too many verification attempts")
 	ErrResendTooSoon     = errors.New("verification code requested too recently")
+	ErrUnauthenticated   = errors.New("session is invalid or expired")
+	ErrVerificationStale = errors.New("fresh email verification required")
+	ErrInvalidHandle     = errors.New("invalid handle")
+	ErrHandleTaken       = errors.New("handle is already taken")
 )
 
 type Challenge struct {
@@ -44,6 +48,13 @@ type Session struct {
 	CreatedAt  time.Time
 }
 
+type AuthenticatedSession struct {
+	User       User
+	SessionID  string
+	ExpiresAt  time.Time
+	VerifiedAt time.Time
+}
+
 type Store interface {
 	CreateChallenge(context.Context, Challenge, time.Duration) error
 	DeleteChallenge(context.Context, string) error
@@ -52,6 +63,9 @@ type Store interface {
 	// stores the Session with its UserID set. A mismatched code still durably
 	// records the failed attempt.
 	CompleteVerification(ctx context.Context, email string, codeHash []byte, now time.Time, session Session) (User, error)
+	AuthenticateSession(ctx context.Context, tokenHash []byte, now, expiresAt time.Time) (User, Session, error)
+	RevokeSession(ctx context.Context, tokenHash []byte, now time.Time) error
+	ClaimHandle(ctx context.Context, userID, handle, normalized string, now time.Time) (User, error)
 }
 
 type CodeSender interface {

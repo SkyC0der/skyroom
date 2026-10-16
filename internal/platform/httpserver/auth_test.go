@@ -65,6 +65,50 @@ func TestAuthenticationCodeFlow(t *testing.T) {
 	if !body.NeedsHandle {
 		t.Fatal("expected a new user to require a handle")
 	}
+
+	sessionCookie := cookies[0]
+	request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/session", nil)
+	request.AddCookie(sessionCookie)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected active session status %d, got %d: %s", http.StatusOK, response.Code, response.Body.String())
+	}
+
+	handleBody, _ := json.Marshal(map[string]string{"handle": "Sky.Member"})
+	request = httptest.NewRequest(http.MethodPut, "/api/v1/users/me/handle", bytes.NewReader(handleBody))
+	request.AddCookie(sessionCookie)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected handle status %d, got %d: %s", http.StatusOK, response.Code, response.Body.String())
+	}
+	var handled struct {
+		NeedsHandle bool          `json:"needs_handle"`
+		User        identity.User `json:"user"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&handled); err != nil {
+		t.Fatal(err)
+	}
+	if handled.NeedsHandle || handled.User.Handle == nil || *handled.User.Handle != "sky.member" {
+		t.Fatalf("unexpected handle response: %+v", handled)
+	}
+
+	request = httptest.NewRequest(http.MethodDelete, "/api/v1/auth/session", nil)
+	request.AddCookie(sessionCookie)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("expected sign out status %d, got %d", http.StatusNoContent, response.Code)
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/session", nil)
+	request.AddCookie(sessionCookie)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("expected revoked session status %d, got %d", http.StatusUnauthorized, response.Code)
+	}
 }
 
 func TestAuthenticationRejectsUnknownJSONFields(t *testing.T) {
@@ -77,5 +121,18 @@ func TestAuthenticationRejectsUnknownJSONFields(t *testing.T) {
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, response.Code)
+	}
+}
+
+func TestRejectsUnexpectedMutationOrigin(t *testing.T) {
+	t.Parallel()
+
+	handler := New(slog.New(slog.NewTextHandler(io.Discard, nil)), "http://localhost:3000")
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/codes", bytes.NewBufferString(`{"email":"member@example.com"}`))
+	request.Header.Set("Origin", "https://attacker.example")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("expected status %d, got %d", http.StatusForbidden, response.Code)
 	}
 }
