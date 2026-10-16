@@ -64,6 +64,7 @@ func (s *PostgresStore) CreateCommunity(ctx context.Context, ownerUserID, ownerH
 			return fmt.Errorf("insert community: %w", err)
 		}
 		created.Community.MemberCount = 1
+		created.Community.GeneralRoomID = roomID
 
 		if err := tx.QueryRow(ctx, `
 			INSERT INTO members (id, community_id, user_id, joined_at)
@@ -107,7 +108,9 @@ func (s *PostgresStore) CreateCommunity(ctx context.Context, ownerUserID, ownerH
 
 func (s *PostgresStore) ListCommunities(ctx context.Context, userID string) ([]Community, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT c.id::text, c.owner_user_id::text, c.name, c.description, c.created_at,
+		SELECT c.id::text, c.owner_user_id::text,
+		       (SELECT room.id::text FROM rooms room WHERE room.community_id = c.id AND room.name = 'general'),
+		       c.name, c.description, c.created_at,
 		       (SELECT count(*) FROM members count_member WHERE count_member.community_id = c.id AND count_member.state = 'active')
 		FROM communities c
 		JOIN members member ON member.community_id = c.id
@@ -120,7 +123,7 @@ func (s *PostgresStore) ListCommunities(ctx context.Context, userID string) ([]C
 	communities := make([]Community, 0)
 	for rows.Next() {
 		var community Community
-		if err := rows.Scan(&community.ID, &community.OwnerUserID, &community.Name, &community.Description, &community.CreatedAt, &community.MemberCount); err != nil {
+		if err := rows.Scan(&community.ID, &community.OwnerUserID, &community.GeneralRoomID, &community.Name, &community.Description, &community.CreatedAt, &community.MemberCount); err != nil {
 			return nil, fmt.Errorf("scan community: %w", err)
 		}
 		communities = append(communities, community)

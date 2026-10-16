@@ -1,12 +1,14 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { RoomConversation } from "@/components/room-conversation";
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 type Community = {
   id: string;
   owner_user_id: string;
+  general_room_id: string;
   name: string;
   description: string;
   member_count: number;
@@ -30,6 +32,7 @@ export function CommunityOnboarding({ userID, userHandle, onSignOut, busy: signi
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [selectedCommunityID, setSelectedCommunityID] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -38,7 +41,10 @@ export function CommunityOnboarding({ userID, userHandle, onSignOut, busy: signi
         const response = await fetch(`${apiBase}/api/v1/communities`, { credentials: "include" });
         if (!response.ok) throw new Error("load failed");
         const body = (await response.json()) as { communities: Community[] };
-        if (active) setCommunities(body.communities);
+        if (active) {
+          setCommunities(body.communities);
+          setSelectedCommunityID((current) => current || body.communities[0]?.id || "");
+        }
       } catch {
         if (active) setError("Skyroom could not load your Communities.");
       } finally {
@@ -68,6 +74,7 @@ export function CommunityOnboarding({ userID, userHandle, onSignOut, busy: signi
       }
       const body = (await response.json()) as { community: Community };
       setCommunities((current) => [...current, body.community]);
+      setSelectedCommunityID(body.community.id);
       setName("");
       setDescription("");
       setInvitation(null);
@@ -124,6 +131,8 @@ export function CommunityOnboarding({ userID, userHandle, onSignOut, busy: signi
   }
 
   const inviteURL = invitation && typeof window !== "undefined" ? `${window.location.origin}/invite?token=${encodeURIComponent(invitation.token)}` : "";
+  const selectedCommunity = communities.find((item) => item.id === selectedCommunityID);
+  const ownedCommunityCount = communities.filter((item) => item.owner_user_id === userID).length;
 
   return (
     <section className="auth-card community-card" aria-live="polite">
@@ -146,6 +155,7 @@ export function CommunityOnboarding({ userID, userHandle, onSignOut, busy: signi
               <span>{item.member_count} {item.member_count === 1 ? "member" : "members"}</span>
             </div>
             {item.description && <p>{item.description}</p>}
+            <button className="room-open" type="button" onClick={() => setSelectedCommunityID(item.id)}>{selectedCommunityID === item.id ? "Viewing #general" : "Open #general"}</button>
             {item.owner_user_id === userID && (
               <div className="invite-controls">
                 <label htmlFor={`max-uses-${item.id}`}>Invite use limit <span>(optional)</span></label>
@@ -156,6 +166,8 @@ export function CommunityOnboarding({ userID, userHandle, onSignOut, busy: signi
           </article>
         ))}
       </div>
+
+      {selectedCommunity && <RoomConversation key={selectedCommunity.id} roomID={selectedCommunity.general_room_id} communityName={selectedCommunity.name} userHandle={userHandle} />}
 
       {invitation && (
         <div className="invite-result">
@@ -176,7 +188,7 @@ export function CommunityOnboarding({ userID, userHandle, onSignOut, busy: signi
           <label htmlFor="community-description">Description <span>(optional)</span></label>
           <textarea id="community-description" maxLength={500} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="What brings this Community together?" />
         </div>
-        <button className="auth-submit" type="submit" disabled={busy || communities.length >= 3}>{busy ? "Working…" : communities.length >= 3 ? "Three-Community limit reached" : "Create Community"}</button>
+        <button className="auth-submit" type="submit" disabled={busy || ownedCommunityCount >= 3}>{busy ? "Working…" : ownedCommunityCount >= 3 ? "Three-Community limit reached" : "Create Community"}</button>
       </form>
 
       {error && <p className="form-error" role="alert">{error}</p>}

@@ -223,6 +223,74 @@ paths:
           description: A global Handle must be claimed first.
         "410":
           description: The invitation expired, was revoked, or reached its use limit.
+  /rooms/{room_id}/messages:
+    get:
+      operationId: listRoomMessages
+      summary: Read an authorized page of durable Room Messages
+      parameters:
+        - $ref: "#/components/parameters/RoomID"
+        - name: before
+          in: query
+          description: Return Messages older than this exclusive Conversation cursor.
+          schema:
+            type: string
+        - name: after
+          in: query
+          description: Return Messages newer than this exclusive Conversation cursor for gap recovery.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: Messages ordered from oldest to newest within the page.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageHistoryPage"
+        "400":
+          description: The cursor or limit is invalid.
+        "401":
+          description: Authentication is required.
+        "403":
+          description: The current User cannot view the Room.
+    post:
+      operationId: postRoomMessage
+      summary: Durably post a plain-text Room Message and outbox event
+      parameters:
+        - $ref: "#/components/parameters/RoomID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageCreate"
+      responses:
+        "201":
+          description: The Message and its outbox event committed atomically.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessagePostResult"
+        "200":
+          description: An idempotent retry returned the previously committed Message.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessagePostResult"
+        "400":
+          description: The body or client idempotency key is invalid.
+        "401":
+          description: Authentication is required.
+        "403":
+          description: The current User cannot send Messages in the Room.
+        "409":
+          description: The idempotency key was reused with different Message content.
   /health:
     get:
       operationId: getHealth
@@ -254,6 +322,13 @@ components:
   parameters:
     CommunityID:
       name: community_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RoomID:
+      name: room_id
       in: path
       required: true
       schema:
@@ -321,12 +396,15 @@ components:
           default: ""
     Community:
       type: object
-      required: [id, owner_user_id, name, description, member_count, created_at]
+      required: [id, owner_user_id, general_room_id, name, description, member_count, created_at]
       properties:
         id:
           type: string
           format: uuid
         owner_user_id:
+          type: string
+          format: uuid
+        general_room_id:
           type: string
           format: uuid
         name:
@@ -452,6 +530,72 @@ components:
         membership:
           $ref: "#/components/schemas/Member"
         already_member:
+          type: boolean
+    MessageCreate:
+      type: object
+      additionalProperties: false
+      required: [client_idempotency_key, body]
+      properties:
+        client_idempotency_key:
+          type: string
+          minLength: 8
+          maxLength: 100
+          pattern: "^[A-Za-z0-9_-]+$"
+        body:
+          type: string
+          minLength: 1
+          maxLength: 4000
+    Message:
+      type: object
+      required: [id, community_id, room_id, author_user_id, author_handle, client_idempotency_key, body, revision, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        community_id:
+          type: string
+          format: uuid
+        room_id:
+          type: string
+          format: uuid
+        author_user_id:
+          type: string
+          format: uuid
+        author_handle:
+          type: string
+        client_idempotency_key:
+          type: string
+        body:
+          type: string
+        revision:
+          type: integer
+          minimum: 1
+        created_at:
+          type: string
+          format: date-time
+    MessagePostResult:
+      type: object
+      required: [message, duplicate]
+      properties:
+        message:
+          $ref: "#/components/schemas/Message"
+        duplicate:
+          type: boolean
+    MessageHistoryPage:
+      type: object
+      required: [messages, has_more_before, has_more_after]
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/Message"
+        oldest_cursor:
+          type: string
+        latest_cursor:
+          type: string
+        has_more_before:
+          type: boolean
+        has_more_after:
           type: boolean
     AuthenticatedUser:
       type: object

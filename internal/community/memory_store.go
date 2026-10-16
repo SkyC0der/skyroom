@@ -19,17 +19,19 @@ type memoryInvitation struct {
 }
 
 type MemoryStore struct {
-	mu          sync.Mutex
-	communities map[string]Community
-	members     map[string]map[string]Member
-	permissions map[string]map[string]permission.Capability
-	invitations map[string]*memoryInvitation
+	mu              sync.Mutex
+	communities     map[string]Community
+	members         map[string]map[string]Member
+	permissions     map[string]map[string]permission.Capability
+	invitations     map[string]*memoryInvitation
+	roomCommunities map[string]string
 }
 
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
 		communities: make(map[string]Community), members: make(map[string]map[string]Member),
 		permissions: make(map[string]map[string]permission.Capability), invitations: make(map[string]*memoryInvitation),
+		roomCommunities: make(map[string]string),
 	}
 }
 
@@ -57,12 +59,13 @@ func (s *MemoryStore) CreateCommunity(_ context.Context, ownerUserID, ownerHandl
 	if err != nil {
 		return CreatedCommunity{}, err
 	}
-	community := Community{ID: communityID, OwnerUserID: ownerUserID, Name: name, Description: description, MemberCount: 1, CreatedAt: now}
+	community := Community{ID: communityID, OwnerUserID: ownerUserID, GeneralRoomID: roomID, Name: name, Description: description, MemberCount: 1, CreatedAt: now}
 	member := Member{ID: memberID, CommunityID: communityID, UserID: ownerUserID, Handle: ownerHandle, JoinedAt: now}
 	room := Room{ID: roomID, CommunityID: communityID, Name: "general", Kind: "text", Visibility: "members", CreatedAt: now}
 	s.communities[communityID] = community
 	s.members[communityID] = map[string]Member{ownerUserID: member}
 	s.permissions[communityID] = map[string]permission.Capability{ownerUserID: permission.OwnerPermissions}
+	s.roomCommunities[roomID] = communityID
 	return CreatedCommunity{Community: community, Membership: member, GeneralRoom: room}, nil
 }
 
@@ -167,6 +170,23 @@ func (s *MemoryStore) HasCapability(_ context.Context, userID, communityID strin
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.permissions[communityID][userID]&capability != 0, nil
+}
+
+func (s *MemoryStore) HasRoomCapability(_ context.Context, userID, roomID string, capability permission.Capability) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	communityID, ok := s.roomCommunities[roomID]
+	if !ok {
+		return false, nil
+	}
+	return s.permissions[communityID][userID]&capability != 0, nil
+}
+
+func (s *MemoryStore) CommunityForRoom(_ context.Context, roomID string) (string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	communityID, ok := s.roomCommunities[roomID]
+	return communityID, ok
 }
 
 func (s *MemoryStore) activeInvitation(tokenHash []byte, now time.Time) (*memoryInvitation, error) {

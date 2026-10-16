@@ -25,12 +25,13 @@ const (
 )
 
 type Community struct {
-	ID          string    `json:"id"`
-	OwnerUserID string    `json:"owner_user_id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	MemberCount int       `json:"member_count"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID            string    `json:"id"`
+	OwnerUserID   string    `json:"owner_user_id"`
+	GeneralRoomID string    `json:"general_room_id"`
+	Name          string    `json:"name"`
+	Description   string    `json:"description"`
+	MemberCount   int       `json:"member_count"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 type Member struct {

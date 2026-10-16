@@ -35,6 +35,9 @@ func TestPostgresCommunityTransactionAndInvitationJoin(t *testing.T) {
 	if members != 1 || roles != 2 || assignments != 2 || rooms != 1 {
 		t.Fatalf("community aggregate was incomplete: members=%d roles=%d assignments=%d rooms=%d", members, roles, assignments, rooms)
 	}
+	if created.Community.GeneralRoomID != created.GeneralRoom.ID {
+		t.Fatalf("expected Community read model to expose general Room ID, community=%+v room=%+v", created.Community, created.GeneralRoom)
+	}
 
 	var ownerRoleID string
 	if err := pool.QueryRow(ctx, `SELECT id::text FROM roles WHERE community_id = $1 AND system_key = 'owner'`, created.Community.ID).Scan(&ownerRoleID); err != nil {

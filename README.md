@@ -10,6 +10,7 @@ The initial deployment is intentionally small: a static Next.js client and one G
 apps/web/                 Next.js and TypeScript web client
 cmd/api/                  Go application entrypoint
 internal/community/       Community and invitation domain logic
+internal/conversation/    Durable Messages, history, and outbox writes
 internal/permission/      Capability authorization
 internal/platform/        HTTP and runtime infrastructure
 contracts/                HTTP and realtime source contracts
@@ -58,7 +59,7 @@ npm run lint
 npm run build:web
 ```
 
-The HTTP endpoints are defined in `contracts/openapi.yaml`. They cover identity, Community creation, invitation previews, revocation, and idempotent joins. PostgreSQL is used whenever `DATABASE_URL` is set; development falls back to memory only when it is absent. The API applies embedded migrations at startup.
+The HTTP endpoints are defined in `contracts/openapi.yaml`. They cover identity, Communities, invitations, idempotent joins, and durable Room Messages with cursor history. PostgreSQL is used whenever `DATABASE_URL` is set; development falls back to memory only when it is absent. The API applies embedded migrations at startup.
 
 ## Deployment
 

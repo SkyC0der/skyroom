@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/SkyC0der/skyroom/internal/community"
+	"github.com/SkyC0der/skyroom/internal/conversation"
 	"github.com/SkyC0der/skyroom/internal/identity"
 )
 
@@ -19,12 +20,19 @@ type healthResponse struct {
 type config struct {
 	identity      *identity.Service
 	community     *community.Service
+	conversation  *conversation.Service
 	secureCookies bool
 }
 
 func WithCommunity(service *community.Service) Option {
 	return func(config *config) {
 		config.community = service
+	}
+}
+
+func WithConversation(service *conversation.Service) Option {
+	return func(config *config) {
+		config.conversation = service
 	}
 }
 
@@ -62,6 +70,11 @@ func New(logger *slog.Logger, webOrigin string, options ...Option) http.Handler 
 		mux.HandleFunc("DELETE /api/v1/communities/{communityID}/invitations/{invitationID}", communities.revokeInvitation)
 		mux.HandleFunc("GET /api/v1/invitations/{token}", communities.previewInvitation)
 		mux.HandleFunc("POST /api/v1/invitations/{token}/join", communities.joinInvitation)
+	}
+	if configuration.conversation != nil {
+		conversations := conversationHandlers{service: configuration.conversation}
+		mux.HandleFunc("GET /api/v1/rooms/{roomID}/messages", conversations.history)
+		mux.HandleFunc("POST /api/v1/rooms/{roomID}/messages", conversations.post)
 	}
 
 	return recoverPanic(logger, requestLog(logger, cors(webOrigin, enforceOrigin(webOrigin, mux))))

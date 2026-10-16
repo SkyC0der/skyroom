@@ -22,3 +22,17 @@ func TestNewReturnsUUIDv7(t *testing.T) {
 		t.Fatalf("expected RFC 9562 variant, got %q", value)
 	}
 }
+
+func TestIsValid(t *testing.T) {
+	t.Parallel()
+	value, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !IsValid(value) {
+		t.Fatalf("expected generated UUID to be valid: %s", value)
+	}
+	if IsValid("not-a-uuid") {
+		t.Fatal("expected invalid UUID to be rejected")
+	}
+}

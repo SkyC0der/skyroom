@@ -46,7 +46,7 @@ func TestCreateCommunityInviteAndJoin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if created.Community.MemberCount != 1 || created.GeneralRoom.Name != "general" || created.GeneralRoom.Visibility != "members" {
+	if created.Community.MemberCount != 1 || created.Community.GeneralRoomID != created.GeneralRoom.ID || created.GeneralRoom.Name != "general" || created.GeneralRoom.Visibility != "members" {
 		t.Fatalf("unexpected community aggregate: %+v", created)
 	}
 	allowed, err := service.CanCreateRoom(ctx, ownerToken, created.Community.ID)

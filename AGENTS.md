@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-Skyroom combines a Go API with a Next.js web client. `cmd/api/` contains the API entrypoint; business logic lives under `internal/`, with shared HTTP and PostgreSQL infrastructure in `internal/platform/`. The frontend is in `apps/web/app/` and reusable React components are in `apps/web/components/`. Keep API definitions in `contracts/`, embedded SQL migrations in `database/migrations/`, container and deployment files in `platform/`, and product or architecture notes in `docs/`. Treat `design-system/skyroom/MASTER.md` as the visual-system reference.
+Skyroom combines a Go API with a Next.js web client. `cmd/api/` contains the API entrypoint; business logic lives under modules such as `internal/community/`, `internal/conversation/`, and `internal/permission/`, with shared HTTP and PostgreSQL infrastructure in `internal/platform/`. The frontend is in `apps/web/app/` and reusable React components are in `apps/web/components/`. Keep API definitions in `contracts/`, embedded SQL migrations in `database/migrations/`, container and deployment files in `platform/`, and product or architecture notes in `docs/`. Treat `design-system/skyroom/MASTER.md` as the visual-system reference.
 
 ## Build, Test, and Development Commands
 

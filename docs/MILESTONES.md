@@ -59,6 +59,7 @@ Goal: validate the complete activation path on one Go process and PostgreSQL.
 
 **Mode:** AFK  
 **Blocked by:** M1.4
+**Status:** Complete
 
 - Post plain-text Messages through HTTP after current Room authorization.
 - Commit the Message and outbox event together.
