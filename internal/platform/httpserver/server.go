@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/SkyC0der/skyroom/internal/community"
 	"github.com/SkyC0der/skyroom/internal/identity"
 )
 
@@ -17,7 +18,14 @@ type healthResponse struct {
 
 type config struct {
 	identity      *identity.Service
+	community     *community.Service
 	secureCookies bool
+}
+
+func WithCommunity(service *community.Service) Option {
+	return func(config *config) {
+		config.community = service
+	}
 }
 
 type Option func(*config)
@@ -45,6 +53,15 @@ func New(logger *slog.Logger, webOrigin string, options ...Option) http.Handler 
 		mux.HandleFunc("GET /api/v1/auth/session", auth.session)
 		mux.HandleFunc("DELETE /api/v1/auth/session", auth.signOut)
 		mux.HandleFunc("PUT /api/v1/users/me/handle", auth.claimHandle)
+	}
+	if configuration.community != nil {
+		communities := communityHandlers{service: configuration.community}
+		mux.HandleFunc("GET /api/v1/communities", communities.list)
+		mux.HandleFunc("POST /api/v1/communities", communities.create)
+		mux.HandleFunc("POST /api/v1/communities/{communityID}/invitations", communities.createInvitation)
+		mux.HandleFunc("DELETE /api/v1/communities/{communityID}/invitations/{invitationID}", communities.revokeInvitation)
+		mux.HandleFunc("GET /api/v1/invitations/{token}", communities.previewInvitation)
+		mux.HandleFunc("POST /api/v1/invitations/{token}/join", communities.joinInvitation)
 	}
 
 	return recoverPanic(logger, requestLog(logger, cors(webOrigin, enforceOrigin(webOrigin, mux))))

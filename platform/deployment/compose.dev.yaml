@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: skyroom
       POSTGRES_PASSWORD: skyroom-local
     ports:
-      - "5432:5432"
+      - "${SKYROOM_POSTGRES_PORT:-5434}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U skyroom -d skyroom"]
       interval: 5s
@@ -18,8 +18,8 @@ services:
   mailpit:
     image: axllent/mailpit:v1.27
     ports:
-      - "1025:1025"
-      - "8025:8025"
+      - "${SKYROOM_SMTP_PORT:-1026}:1025"
+      - "${SKYROOM_MAILPIT_PORT:-8026}:8025"
 
 volumes:
   skyroom-postgres:

@@ -38,6 +38,7 @@ Goal: validate the complete activation path on one Go process and PostgreSQL.
 
 **Mode:** AFK  
 **Blocked by:** M1.2
+**Status:** Complete
 
 - Create the Community, Owner membership, non-removable Owner Role, implicit Everyone Role, and members-only `general` Room in one transaction.
 - Limit beta accounts to three owned Communities.
@@ -47,6 +48,7 @@ Goal: validate the complete activation path on one Go process and PostgreSQL.
 
 **Mode:** AFK  
 **Blocked by:** M1.3
+**Status:** Complete
 
 - Create a revocable, multi-use invitation that expires after seven days.
 - Support an optional maximum-use count.

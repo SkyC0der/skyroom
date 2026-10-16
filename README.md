@@ -9,6 +9,8 @@ The initial deployment is intentionally small: a static Next.js client and one G
 ```text
 apps/web/                 Next.js and TypeScript web client
 cmd/api/                  Go application entrypoint
+internal/community/       Community and invitation domain logic
+internal/permission/      Capability authorization
 internal/platform/        HTTP and runtime infrastructure
 contracts/                HTTP and realtime source contracts
 platform/containers/      Production container definitions
@@ -31,10 +33,10 @@ Start local PostgreSQL and Mailpit:
 docker compose -f platform/deployment/compose.dev.yaml up -d
 ```
 
-Mailpit's local inbox is available at `http://localhost:8025`. Then run the API:
+The stack uses host ports 5434 (PostgreSQL), 1026 (SMTP), and 8026 (Mailpit) to avoid common local conflicts. Override them with `SKYROOM_POSTGRES_PORT`, `SKYROOM_SMTP_PORT`, or `SKYROOM_MAILPIT_PORT`. Mailpit's inbox is available at `http://localhost:8026`. Then run the API:
 
 ```bash
-DATABASE_URL='postgres://skyroom:skyroom-local@localhost:5432/skyroom?sslmode=disable' go run ./cmd/api
+DATABASE_URL='postgres://skyroom:skyroom-local@localhost:5434/skyroom?sslmode=disable' go run ./cmd/api
 ```
 
 In another terminal, run the web client:
@@ -56,7 +58,7 @@ npm run lint
 npm run build:web
 ```
 
-The identity endpoints are defined in `contracts/openapi.yaml`. They cover verification codes, session restoration and revocation, and global Handle claims. PostgreSQL is used whenever `DATABASE_URL` is set; development falls back to memory only when it is absent. The API applies embedded migrations at startup.
+The HTTP endpoints are defined in `contracts/openapi.yaml`. They cover identity, Community creation, invitation previews, revocation, and idempotent joins. PostgreSQL is used whenever `DATABASE_URL` is set; development falls back to memory only when it is absent. The API applies embedded migrations at startup.
 
 ## Deployment
 

@@ -1,14 +1,17 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { CommunityOnboarding } from "@/components/community-onboarding";
+import { useRouter } from "next/navigation";
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 type Step = "loading" | "email" | "code" | "handle" | "complete";
-type User = { email: string; handle: string | null };
+type User = { id: string; email: string; handle: string | null };
 type AuthResponse = { user: User; needs_handle: boolean };
 
 export function AuthForm() {
+  const router = useRouter();
   const [step, setStep] = useState<Step>("loading");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -50,6 +53,15 @@ export function AuthForm() {
     const timer = window.setTimeout(() => setResendAfter((seconds) => Math.max(0, seconds - 1)), 1000);
     return () => window.clearTimeout(timer);
   }, [resendAfter, step]);
+
+  useEffect(() => {
+    if (step !== "complete") return;
+    const pendingInvitation = window.localStorage.getItem("pending_invitation_token");
+    if (pendingInvitation) {
+      window.localStorage.removeItem("pending_invitation_token");
+      router.replace(`/invite?token=${encodeURIComponent(pendingInvitation)}`);
+    }
+  }, [router, step]);
 
   async function sendVerificationCode(): Promise<"sent" | "throttled" | "failed"> {
     const response = await fetch(`${apiBase}/api/v1/auth/codes`, {
@@ -182,16 +194,7 @@ export function AuthForm() {
   }
 
   if (step === "complete") {
-    return (
-      <section className="auth-card auth-card--complete" aria-live="polite">
-        <span className="auth-check" aria-hidden="true">✓</span>
-        <p className="auth-step">Account ready</p>
-        <h2>@{user?.handle}</h2>
-        <p>Your verified Skyroom identity is active and will follow you into every Community.</p>
-        {error && <p className="form-error" role="alert">{error}</p>}
-        <button className="auth-back" type="button" disabled={busy} onClick={() => void signOut()}>Sign out</button>
-      </section>
-    );
+    return <CommunityOnboarding userID={user?.id ?? ""} userHandle={user?.handle ?? ""} onSignOut={signOut} busy={busy} />;
   }
 
   if (step === "handle") {

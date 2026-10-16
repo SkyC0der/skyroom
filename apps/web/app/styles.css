@@ -299,9 +299,9 @@ button:disabled {
   font-weight: 700;
 }
 
-.field input {
+.field input,
+.field textarea {
   width: 100%;
-  min-height: 52px;
   padding: 0 14px;
   border: 1px solid var(--ink);
   border-radius: 0;
@@ -311,7 +311,19 @@ button:disabled {
   font-size: 16px;
 }
 
+.field input {
+  min-height: 52px;
+}
+
+.field textarea {
+  min-height: 104px;
+  padding-block: 14px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
 .field input:focus,
+.field textarea:focus,
 .auth-submit:focus-visible,
 .auth-back:focus-visible {
   outline: 3px solid rgba(255, 90, 54, .35);
@@ -391,6 +403,146 @@ button:disabled {
   font-size: 24px;
 }
 
+.community-card {
+  width: min(100%, 620px);
+  max-height: calc(100svh - 150px);
+  overflow-y: auto;
+}
+
+.community-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.community-card__header .auth-step {
+  margin-bottom: 10px;
+}
+
+.compact-button {
+  min-height: 40px;
+  padding-inline: 14px;
+  color: var(--ink);
+  background: transparent;
+  cursor: pointer;
+}
+
+.community-list {
+  display: grid;
+  gap: 12px;
+  margin: 24px 0;
+}
+
+.community-item {
+  padding: 18px;
+  border: 1px solid var(--line);
+}
+
+.community-item > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.community-item span,
+.community-item p,
+.invite-result p,
+.field label span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.community-item p {
+  margin: 8px 0 0;
+}
+
+.invite-controls {
+  display: grid;
+  grid-template-columns: 1fr 120px auto;
+  align-items: end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.invite-controls label {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.invite-controls input,
+.invite-result input {
+  width: 100%;
+  min-height: 42px;
+  padding-inline: 10px;
+  border: 1px solid var(--ink);
+  background: #fffdf7;
+  font: inherit;
+}
+
+.invite-controls button {
+  min-height: 42px;
+  padding-inline: 12px;
+  cursor: pointer;
+}
+
+.invite-result {
+  padding: 18px;
+  border: 1px solid var(--ink);
+  background: #fffdf7;
+}
+
+.invite-result label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.community-create {
+  display: grid;
+  gap: 16px;
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid var(--ink);
+}
+
+.community-create h3 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.invitation-layout {
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 520px);
+}
+
+.invitation-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  margin: 8px 0 24px;
+  border-block: 1px solid var(--line);
+}
+
+.invitation-card dl div {
+  padding: 16px 0;
+}
+
+.invitation-card dt {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.invitation-card dd {
+  margin: 6px 0 0;
+  font-weight: 700;
+}
+
+.invitation-sign-in {
+  width: 100%;
+  justify-content: center;
+}
+
 @media (max-width: 820px) {
   .auth-layout {
     grid-template-columns: 1fr;
@@ -401,5 +553,13 @@ button:disabled {
 
   .auth-intro h1 {
     font-size: clamp(56px, 17vw, 90px);
+  }
+
+  .community-card {
+    max-height: none;
+  }
+
+  .invite-controls {
+    grid-template-columns: 1fr;
   }
 }

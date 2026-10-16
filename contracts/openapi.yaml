@@ -104,6 +104,125 @@ paths:
           description: A fresh email verification is required.
         "409":
           description: The normalized Handle is already claimed.
+  /communities:
+    get:
+      operationId: listCommunities
+      summary: List Communities joined by the current User
+      responses:
+        "200":
+          description: Accessible Communities.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [communities]
+                properties:
+                  communities:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Community"
+        "401":
+          description: Authentication is required.
+    post:
+      operationId: createCommunity
+      summary: Atomically create a Community and its default structure
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommunityCreate"
+      responses:
+        "201":
+          description: The Community, owner membership, system Roles, and general Room were created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedCommunity"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Authentication is required.
+        "409":
+          description: A Handle is required or the ownership limit was reached.
+  /communities/{community_id}/invitations:
+    post:
+      operationId: createCommunityInvitation
+      summary: Create a seven-day multi-use Community invitation
+      parameters:
+        - $ref: "#/components/parameters/CommunityID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvitationCreate"
+      responses:
+        "201":
+          description: The invitation was created. Its token is returned only here.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invitation"
+        "401":
+          description: Authentication is required.
+        "403":
+          description: Only the Community owner may create invitations initially.
+  /communities/{community_id}/invitations/{invitation_id}:
+    delete:
+      operationId: revokeCommunityInvitation
+      summary: Revoke an active invitation
+      parameters:
+        - $ref: "#/components/parameters/CommunityID"
+        - name: invitation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: The invitation was revoked.
+        "401":
+          description: Authentication is required.
+        "403":
+          description: The current User cannot revoke this invitation.
+  /invitations/{token}:
+    get:
+      operationId: previewCommunityInvitation
+      summary: Preview an active invitation before joining
+      parameters:
+        - $ref: "#/components/parameters/InvitationToken"
+      responses:
+        "200":
+          description: Public Community and inviter details for the invitation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationPreview"
+        "404":
+          description: The invitation token is invalid.
+        "410":
+          description: The invitation expired, was revoked, or reached its use limit.
+  /invitations/{token}/join:
+    post:
+      operationId: joinCommunityInvitation
+      summary: Idempotently join the invited Community
+      parameters:
+        - $ref: "#/components/parameters/InvitationToken"
+      responses:
+        "200":
+          description: Membership exists and includes the Everyone Role.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JoinResult"
+        "401":
+          description: Authentication is required.
+        "409":
+          description: A global Handle must be claimed first.
+        "410":
+          description: The invitation expired, was revoked, or reached its use limit.
   /health:
     get:
       operationId: getHealth
@@ -132,6 +251,22 @@ paths:
                     type: string
                     const: alive
 components:
+  parameters:
+    CommunityID:
+      name: community_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    InvitationToken:
+      name: token
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 43
+        maxLength: 43
   responses:
     BadRequest:
       description: The request body or one of its fields is invalid.
@@ -171,6 +306,153 @@ components:
           minLength: 3
           maxLength: 32
           pattern: "^[A-Za-z0-9][A-Za-z0-9._]{1,30}[A-Za-z0-9]$"
+    CommunityCreate:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 80
+        description:
+          type: string
+          maxLength: 500
+          default: ""
+    Community:
+      type: object
+      required: [id, owner_user_id, name, description, member_count, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        owner_user_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        member_count:
+          type: integer
+          minimum: 1
+        created_at:
+          type: string
+          format: date-time
+    Member:
+      type: object
+      required: [id, community_id, user_id, handle, joined_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        community_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        handle:
+          type: string
+        joined_at:
+          type: string
+          format: date-time
+    Room:
+      type: object
+      required: [id, community_id, name, kind, visibility, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        community_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        kind:
+          type: string
+          const: text
+        visibility:
+          type: string
+          const: members
+        created_at:
+          type: string
+          format: date-time
+    CreatedCommunity:
+      type: object
+      required: [community, membership, general_room]
+      properties:
+        community:
+          $ref: "#/components/schemas/Community"
+        membership:
+          $ref: "#/components/schemas/Member"
+        general_room:
+          $ref: "#/components/schemas/Room"
+    InvitationCreate:
+      type: object
+      additionalProperties: false
+      properties:
+        max_uses:
+          oneOf:
+            - type: integer
+              minimum: 1
+              maximum: 10000
+            - type: "null"
+    Invitation:
+      type: object
+      required: [id, community_id, token, expires_at, max_uses, uses_count, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        community_id:
+          type: string
+          format: uuid
+        token:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        max_uses:
+          oneOf:
+            - type: integer
+            - type: "null"
+        uses_count:
+          type: integer
+        revoked_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+    InvitationPreview:
+      type: object
+      required: [community_id, community_name, community_description, member_count, inviter_handle, expires_at]
+      properties:
+        community_id:
+          type: string
+          format: uuid
+        community_name:
+          type: string
+        community_description:
+          type: string
+        member_count:
+          type: integer
+        inviter_handle:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+    JoinResult:
+      type: object
+      required: [community, membership, already_member]
+      properties:
+        community:
+          $ref: "#/components/schemas/Community"
+        membership:
+          $ref: "#/components/schemas/Member"
+        already_member:
+          type: boolean
     AuthenticatedUser:
       type: object
       required: [user, needs_handle]
