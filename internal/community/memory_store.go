@@ -24,6 +24,7 @@ type MemoryStore struct {
 	members         map[string]map[string]Member
 	permissions     map[string]map[string]permission.Capability
 	invitations     map[string]*memoryInvitation
+	rooms           map[string]Room
 	roomCommunities map[string]string
 }
 
@@ -31,7 +32,7 @@ func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
 		communities: make(map[string]Community), members: make(map[string]map[string]Member),
 		permissions: make(map[string]map[string]permission.Capability), invitations: make(map[string]*memoryInvitation),
-		roomCommunities: make(map[string]string),
+		rooms: make(map[string]Room), roomCommunities: make(map[string]string),
 	}
 }
 
@@ -65,8 +66,30 @@ func (s *MemoryStore) CreateCommunity(_ context.Context, ownerUserID, ownerHandl
 	s.communities[communityID] = community
 	s.members[communityID] = map[string]Member{ownerUserID: member}
 	s.permissions[communityID] = map[string]permission.Capability{ownerUserID: permission.OwnerPermissions}
+	s.rooms[roomID] = room
 	s.roomCommunities[roomID] = communityID
 	return CreatedCommunity{Community: community, Membership: member, GeneralRoom: room}, nil
+}
+
+func (s *MemoryStore) ListRooms(_ context.Context, userID, communityID string) ([]Room, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.permissions[communityID][userID]&permission.ViewRoom == 0 {
+		return []Room{}, nil
+	}
+	result := make([]Room, 0)
+	for _, room := range s.rooms {
+		if room.CommunityID == communityID {
+			result = append(result, room)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].CreatedAt.Equal(result[j].CreatedAt) {
+			return result[i].ID < result[j].ID
+		}
+		return result[i].CreatedAt.Before(result[j].CreatedAt)
+	})
+	return result, nil
 }
 
 func (s *MemoryStore) ListCommunities(_ context.Context, userID string) ([]Community, error) {

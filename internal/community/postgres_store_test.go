@@ -38,6 +38,10 @@ func TestPostgresCommunityTransactionAndInvitationJoin(t *testing.T) {
 	if created.Community.GeneralRoomID != created.GeneralRoom.ID {
 		t.Fatalf("expected Community read model to expose general Room ID, community=%+v room=%+v", created.Community, created.GeneralRoom)
 	}
+	listedRooms, err := service.ListRooms(ctx, ownerToken, created.Community.ID)
+	if err != nil || len(listedRooms) != 1 || listedRooms[0].ID != created.GeneralRoom.ID {
+		t.Fatalf("expected authorized Room listing, rooms=%+v err=%v", listedRooms, err)
+	}
 
 	var ownerRoleID string
 	if err := pool.QueryRow(ctx, `SELECT id::text FROM roles WHERE community_id = $1 AND system_key = 'owner'`, created.Community.ID).Scan(&ownerRoleID); err != nil {
@@ -59,6 +63,15 @@ func TestPostgresCommunityTransactionAndInvitationJoin(t *testing.T) {
 	}
 	if joined.Community.MemberCount != 2 {
 		t.Fatalf("expected two members, got %+v", joined.Community)
+	}
+	listedRooms, err = service.ListRooms(ctx, memberToken, created.Community.ID)
+	if err != nil || len(listedRooms) != 1 || listedRooms[0].ID != created.GeneralRoom.ID {
+		t.Fatalf("expected joined member Room listing, rooms=%+v err=%v", listedRooms, err)
+	}
+	outsiderToken := verifiedUser(t, auth, sender, "database-outsider@example.com", "db.outsider")
+	listedRooms, err = service.ListRooms(ctx, outsiderToken, created.Community.ID)
+	if err != nil || len(listedRooms) != 0 {
+		t.Fatalf("expected outsider Room listing to be empty, rooms=%+v err=%v", listedRooms, err)
 	}
 	var everyoneAssignments int
 	if err := pool.QueryRow(ctx, `

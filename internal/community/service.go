@@ -51,6 +51,14 @@ func (s *Service) List(ctx context.Context, sessionToken string) ([]Community, e
 	return s.store.ListCommunities(ctx, authenticated.User.ID)
 }
 
+func (s *Service) ListRooms(ctx context.Context, sessionToken, communityID string) ([]Room, error) {
+	authenticated, err := s.auth.Authenticate(ctx, sessionToken)
+	if err != nil {
+		return nil, err
+	}
+	return s.store.ListRooms(ctx, authenticated.User.ID, communityID)
+}
+
 func (s *Service) CreateInvitation(ctx context.Context, sessionToken, communityID string, maxUses *int) (Invitation, error) {
 	authenticated, err := s.auth.Authenticate(ctx, sessionToken)
 	if err != nil {

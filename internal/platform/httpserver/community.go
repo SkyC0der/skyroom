@@ -53,6 +53,20 @@ func (h communityHandlers) list(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"communities": communities})
 }
 
+func (h communityHandlers) listRooms(w http.ResponseWriter, r *http.Request) {
+	token, ok := readSessionToken(r)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthenticated"})
+		return
+	}
+	rooms, err := h.service.ListRooms(r.Context(), token, r.PathValue("communityID"))
+	if err != nil {
+		writeCommunityError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"rooms": rooms})
+}
+
 func (h communityHandlers) createInvitation(w http.ResponseWriter, r *http.Request) {
 	token, ok := readSessionToken(r)
 	if !ok {

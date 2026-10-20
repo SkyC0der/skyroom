@@ -54,6 +54,23 @@ func TestCommunityInvitationHTTPFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	request = httptest.NewRequest(http.MethodGet, "/api/v1/communities/"+created.Community.ID+"/rooms", nil)
+	request.AddCookie(ownerCookie)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("list rooms: status=%d body=%s", response.Code, response.Body.String())
+	}
+	var listed struct {
+		Rooms []community.Room `json:"rooms"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&listed); err != nil {
+		t.Fatal(err)
+	}
+	if len(listed.Rooms) != 1 || listed.Rooms[0].ID != created.GeneralRoom.ID {
+		t.Fatalf("unexpected Room listing: %+v", listed.Rooms)
+	}
+
 	request = httptest.NewRequest(http.MethodPost, "/api/v1/communities/"+created.Community.ID+"/invitations", bytes.NewBufferString(`{"max_uses":2}`))
 	request.Header.Set("Content-Type", "application/json")
 	request.AddCookie(ownerCookie)

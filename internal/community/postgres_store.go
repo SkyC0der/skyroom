@@ -134,6 +134,39 @@ func (s *PostgresStore) ListCommunities(ctx context.Context, userID string) ([]C
 	return communities, nil
 }
 
+func (s *PostgresStore) ListRooms(ctx context.Context, userID, communityID string) ([]Room, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT room.id::text, room.community_id::text, room.name, room.kind, room.visibility, room.created_at
+		FROM rooms room
+		WHERE room.community_id = $2
+		  AND EXISTS (
+			SELECT 1
+			FROM members member
+			JOIN member_roles assignment ON assignment.member_id = member.id AND assignment.community_id = member.community_id
+			JOIN roles role ON role.id = assignment.role_id AND role.community_id = assignment.community_id
+			WHERE member.user_id = $1 AND member.community_id = room.community_id AND member.state = 'active'
+			GROUP BY member.id
+			HAVING COALESCE(bit_or(role.permissions), 0) & $3 <> 0
+		  )
+		ORDER BY room.created_at, room.id`, userID, communityID, int64(permission.ViewRoom))
+	if err != nil {
+		return nil, fmt.Errorf("list rooms: %w", err)
+	}
+	defer rows.Close()
+	rooms := make([]Room, 0)
+	for rows.Next() {
+		var room Room
+		if err := rows.Scan(&room.ID, &room.CommunityID, &room.Name, &room.Kind, &room.Visibility, &room.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan room: %w", err)
+		}
+		rooms = append(rooms, room)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list rooms: %w", err)
+	}
+	return rooms, nil
+}
+
 func (s *PostgresStore) CreateInvitation(ctx context.Context, userID, communityID string, tokenHash []byte, expiresAt time.Time, maxUses *int, now time.Time) (Invitation, error) {
 	var invitation Invitation
 	invitationID, err := platformid.New()

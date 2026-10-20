@@ -86,6 +86,7 @@ type JoinResult struct {
 type Store interface {
 	CreateCommunity(ctx context.Context, ownerUserID, ownerHandle, name, description string, now time.Time) (CreatedCommunity, error)
 	ListCommunities(ctx context.Context, userID string) ([]Community, error)
+	ListRooms(ctx context.Context, userID, communityID string) ([]Room, error)
 	CreateInvitation(ctx context.Context, userID, communityID string, tokenHash []byte, expiresAt time.Time, maxUses *int, now time.Time) (Invitation, error)
 	PreviewInvitation(ctx context.Context, tokenHash []byte, now time.Time) (InvitationPreview, error)
 	JoinInvitation(ctx context.Context, userID, handle string, tokenHash []byte, now time.Time) (JoinResult, error)

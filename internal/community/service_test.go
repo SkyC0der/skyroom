@@ -49,6 +49,10 @@ func TestCreateCommunityInviteAndJoin(t *testing.T) {
 	if created.Community.MemberCount != 1 || created.Community.GeneralRoomID != created.GeneralRoom.ID || created.GeneralRoom.Name != "general" || created.GeneralRoom.Visibility != "members" {
 		t.Fatalf("unexpected community aggregate: %+v", created)
 	}
+	rooms, err := service.ListRooms(ctx, ownerToken, created.Community.ID)
+	if err != nil || len(rooms) != 1 || rooms[0].ID != created.GeneralRoom.ID {
+		t.Fatalf("expected owner to discover general Room, rooms=%+v err=%v", rooms, err)
+	}
 	allowed, err := service.CanCreateRoom(ctx, ownerToken, created.Community.ID)
 	if err != nil || !allowed {
 		t.Fatalf("expected owner CREATE_ROOM capability, allowed=%v err=%v", allowed, err)
@@ -74,6 +78,15 @@ func TestCreateCommunityInviteAndJoin(t *testing.T) {
 	}
 	if joined.AlreadyMember || joined.Community.MemberCount != 2 {
 		t.Fatalf("unexpected join result: %+v", joined)
+	}
+	rooms, err = service.ListRooms(ctx, memberToken, created.Community.ID)
+	if err != nil || len(rooms) != 1 || rooms[0].ID != created.GeneralRoom.ID {
+		t.Fatalf("expected member to discover general Room, rooms=%+v err=%v", rooms, err)
+	}
+	outsiderToken := verifiedUser(t, auth, sender, "outsider@example.com", "outsider.one")
+	rooms, err = service.ListRooms(ctx, outsiderToken, created.Community.ID)
+	if err != nil || len(rooms) != 0 {
+		t.Fatalf("expected outsider room discovery to be empty, rooms=%+v err=%v", rooms, err)
 	}
 	allowed, err = service.CanCreateRoom(ctx, memberToken, created.Community.ID)
 	if err != nil || allowed {

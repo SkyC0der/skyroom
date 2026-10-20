@@ -145,6 +145,27 @@ paths:
           description: Authentication is required.
         "409":
           description: A Handle is required or the ownership limit was reached.
+  /communities/{community_id}/rooms:
+    get:
+      operationId: listCommunityRooms
+      summary: List Rooms visible to the current member
+      parameters:
+        - $ref: "#/components/parameters/CommunityID"
+      responses:
+        "200":
+          description: Rooms covered by the member's effective View Room capability.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [rooms]
+                properties:
+                  rooms:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Room"
+        "401":
+          description: Authentication is required.
   /communities/{community_id}/invitations:
     post:
       operationId: createCommunityInvitation

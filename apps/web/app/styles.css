@@ -757,6 +757,281 @@ button:disabled {
   cursor: pointer;
 }
 
+.auth-layout:has(.community-card) {
+  grid-template-columns: minmax(180px, .34fr) minmax(680px, 1.66fr);
+  gap: clamp(28px, 4vw, 64px);
+}
+
+.auth-layout:has(.community-card) .auth-intro h1 {
+  font-size: clamp(52px, 6vw, 92px);
+}
+
+.community-card {
+  width: min(1120px, 100%);
+  max-height: none;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+}
+
+.workspace-header {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 10px 14px 10px 20px;
+  border-bottom: 1px solid var(--ink);
+}
+
+.workspace-header > div {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+
+.workspace-kicker,
+.room-navigation__heading > span,
+.room-list__label,
+.community-count {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.workspace-loading {
+  min-height: 520px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.workspace-shell {
+  display: grid;
+  min-height: 540px;
+  grid-template-columns: 72px 220px minmax(0, 1fr);
+}
+
+.community-rail {
+  display: flex;
+  min-height: 0;
+  align-items: center;
+  justify-content: flex-start;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 10px;
+  border-right: 1px solid var(--ink);
+  border-bottom: 0;
+}
+
+.community-switch {
+  display: grid;
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+  place-items: center;
+  border-color: var(--line);
+  color: var(--ink);
+  background: transparent;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  transition: border-radius 180ms var(--ease-out), background-color 180ms ease, color 180ms ease, transform 140ms var(--ease-out);
+}
+
+.community-switch--active {
+  border-radius: 50%;
+  color: var(--paper);
+  background: var(--ink);
+}
+
+.community-count {
+  margin-top: auto;
+}
+
+.room-navigation {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  border-right: 1px solid var(--ink);
+  background: rgba(255, 253, 247, .45);
+}
+
+.room-navigation__heading {
+  padding: 22px 18px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.room-navigation__heading h2 {
+  margin: 7px 0 4px;
+  overflow: hidden;
+  font-size: 20px;
+  letter-spacing: -.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.room-navigation__heading p,
+.room-navigation__empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.room-list {
+  display: grid;
+  gap: 4px;
+  padding: 18px 10px;
+}
+
+.room-list__label {
+  padding: 0 8px 8px;
+}
+
+.room-switch {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 9px;
+  border-color: transparent;
+  color: var(--muted);
+  background: transparent;
+  font-size: 14px;
+  justify-content: flex-start;
+}
+
+.room-switch span {
+  font-size: 18px;
+  font-weight: 400;
+}
+
+.room-switch--active {
+  color: var(--ink);
+  background: rgba(22, 32, 25, .08);
+}
+
+.workspace-tools {
+  margin: auto 12px 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.workspace-tools summary,
+.community-create-panel summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.workspace-tools label {
+  display: block;
+  margin: 14px 0 6px;
+  font-size: 11px;
+}
+
+.workspace-tools input,
+.workspace-tools button {
+  width: 100%;
+  min-height: 38px;
+  padding-inline: 9px;
+  font: inherit;
+}
+
+.workspace-tools input {
+  border: 1px solid var(--ink);
+  background: var(--paper);
+}
+
+.workspace-tools button {
+  margin-top: 7px;
+  font-size: 12px;
+}
+
+.room-stage {
+  position: relative;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #fffdf7;
+}
+
+.room-stage .room-conversation {
+  margin: 0;
+  border: 0;
+}
+
+.room-stage .message-history {
+  min-height: 310px;
+  max-height: 380px;
+}
+
+.copy-room-link {
+  position: absolute;
+  z-index: 2;
+  top: 13px;
+  right: 112px;
+  min-height: 36px;
+  padding-inline: 10px;
+  border-color: var(--line);
+  color: var(--muted);
+  background: transparent;
+  font-size: 11px;
+}
+
+.workspace-empty {
+  display: grid;
+  min-height: 540px;
+  place-content: center;
+  text-align: center;
+}
+
+.workspace-empty span {
+  color: var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.workspace-empty h2 {
+  margin: 10px 0 6px;
+}
+
+.workspace-empty p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.workspace-footer {
+  border-top: 1px solid var(--ink);
+  padding: 14px 20px;
+}
+
+.community-create-panel[open] {
+  padding-block: 6px;
+}
+
+.community-create-panel .community-create {
+  grid-template-columns: minmax(180px, .8fr) minmax(260px, 1.2fr) auto;
+  align-items: end;
+  margin-top: 16px;
+  padding-top: 0;
+  border: 0;
+}
+
+.community-create-panel .field textarea {
+  min-height: 52px;
+  max-height: 100px;
+  padding-block: 14px;
+}
+
+.community-create-panel .auth-submit {
+  width: auto;
+  margin: 0;
+}
+
+.workspace-footer .invite-result {
+  margin-bottom: 14px;
+}
+
 @media (hover: hover) and (pointer: fine) {
   button:not(:disabled):active,
   .primary-action:active {
@@ -831,6 +1106,26 @@ button:disabled {
     max-height: none;
   }
 
+  .auth-layout:has(.community-card) {
+    display: block;
+  }
+
+  .auth-layout:has(.community-card) .auth-intro {
+    display: none;
+  }
+
+  .workspace-shell {
+    grid-template-columns: 58px minmax(150px, 190px) minmax(0, 1fr);
+  }
+
+  .copy-room-link {
+    display: none;
+  }
+
+  .community-create-panel .community-create {
+    grid-template-columns: 1fr;
+  }
+
   .invite-controls {
     grid-template-columns: 1fr;
   }
@@ -842,5 +1137,48 @@ button:disabled {
 
   .message-composer > div span {
     max-width: 24ch;
+  }
+}
+
+@media (max-width: 640px) {
+  .workspace-page,
+  .auth-page:has(.community-card) {
+    padding-inline: 12px;
+  }
+
+  .workspace-header > div {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .workspace-shell {
+    grid-template-columns: 56px minmax(0, 1fr);
+  }
+
+  .community-rail {
+    grid-row: 1 / span 2;
+  }
+
+  .room-navigation {
+    min-height: 180px;
+    border-right: 0;
+    border-bottom: 1px solid var(--ink);
+  }
+
+  .workspace-tools {
+    display: none;
+  }
+
+  .room-stage {
+    grid-column: 2;
+  }
+
+  .room-stage .message-history {
+    min-height: 300px;
+  }
+
+  .workspace-footer {
+    padding-inline: 14px;
   }
 }

@@ -52,7 +52,7 @@ function eventsURL(roomID: string) {
   return url.toString();
 }
 
-export function RoomConversation({ roomID, communityName, userHandle }: { roomID: string; communityName: string; userHandle: string }) {
+export function RoomConversation({ roomID, roomName, communityName, userHandle }: { roomID: string; roomName: string; communityName: string; userHandle: string }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [oldestCursor, setOldestCursor] = useState("");
   const [hasMore, setHasMore] = useState(false);
@@ -304,9 +304,9 @@ export function RoomConversation({ roomID, communityName, userHandle }: { roomID
   const firstUnreadIndex = unreadAtOpen > 0 ? Math.max(0, readBoundaryIndex + 1) : -1;
 
   return (
-    <section className="room-conversation" aria-label={`${communityName} general Room`}>
+    <section className="room-conversation" aria-label={`${communityName} ${roomName} Room`}>
       <header className="room-conversation__header">
-        <div><span>Room</span><h3># general</h3></div>
+        <div><span>{communityName}</span><h3># {roomName}</h3></div>
         <div className={`room-presence room-presence--${connection}`} role="status"><i aria-hidden="true" />{connection === "live" ? "Live" : connection === "connecting" ? "Connecting" : "Recovering"}</div>
       </header>
       <div className="message-history" ref={historyRef} aria-live="polite" onScroll={markLatestIfVisible}>
@@ -329,7 +329,7 @@ export function RoomConversation({ roomID, communityName, userHandle }: { roomID
       {unreadLiveCount > 0 && <button className="new-message-jump" type="button" onClick={() => scrollToLatest()}>{unreadLiveCount} new {unreadLiveCount === 1 ? "Message" : "Messages"} ↓</button>}
       {error && <p className="form-error room-error" role="alert">{error}</p>}
       <form className="message-composer" onSubmit={sendMessage}>
-        <label htmlFor={`message-${roomID}`}>Message #general</label>
+        <label htmlFor={`message-${roomID}`}>Message #{roomName}</label>
         <textarea id={`message-${roomID}`} required maxLength={4000} value={body} onChange={(event) => setBody(event.target.value)} onKeyDown={handleComposerKeyDown} placeholder={`Message ${communityName}`} />
         <div><span>{body.length}/4000 · Enter to send · Shift + Enter for a new line</span><button type="submit" disabled={!body.trim()}>Send</button></div>
       </form>

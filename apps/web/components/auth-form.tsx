@@ -10,7 +10,7 @@ type Step = "loading" | "email" | "code" | "handle" | "complete";
 type User = { id: string; email: string; handle: string | null };
 type AuthResponse = { user: User; needs_handle: boolean };
 
-export function AuthForm() {
+export function AuthForm({ initialRoomID }: { initialRoomID?: string }) {
   const router = useRouter();
   const [step, setStep] = useState<Step>("loading");
   const [email, setEmail] = useState("");
@@ -194,7 +194,7 @@ export function AuthForm() {
   }
 
   if (step === "complete") {
-    return <CommunityOnboarding userID={user?.id ?? ""} userHandle={user?.handle ?? ""} onSignOut={signOut} busy={busy} />;
+    return <CommunityOnboarding userID={user?.id ?? ""} userHandle={user?.handle ?? ""} initialRoomID={initialRoomID} onSignOut={signOut} busy={busy} />;
   }
 
   if (step === "handle") {
