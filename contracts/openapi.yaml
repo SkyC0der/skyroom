@@ -166,6 +166,32 @@ paths:
                       $ref: "#/components/schemas/Room"
         "401":
           description: Authentication is required.
+    post:
+      operationId: createCommunityRoom
+      summary: Create a members-only text Room
+      parameters:
+        - $ref: "#/components/parameters/CommunityID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoomCreate"
+      responses:
+        "201":
+          description: Room created with a durable audit event.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Room"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Authentication is required.
+        "403":
+          description: The current member lacks Create Room.
+        "409":
+          description: The Room name is taken or the Community quota was reached.
   /communities/{community_id}/invitations:
     post:
       operationId: createCommunityInvitation
@@ -563,6 +589,15 @@ components:
         created_at:
           type: string
           format: date-time
+    RoomCreate:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
     CreatedCommunity:
       type: object
       required: [community, membership, general_room]

@@ -49,6 +49,7 @@ export function CommunityOnboarding({ userID, userHandle, initialRoomID, onSignO
   const [selectedRoomID, setSelectedRoomID] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [newRoomName, setNewRoomName] = useState("");
   const [maxUses, setMaxUses] = useState("");
   const [invitation, setInvitation] = useState<Invitation | null>(null);
   const [loading, setLoading] = useState(true);
@@ -176,6 +177,39 @@ export function CommunityOnboarding({ userID, userHandle, initialRoomID, onSignO
     }
   }
 
+  async function createRoom(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedCommunity) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(`${apiBase}/api/v1/communities/${selectedCommunity.id}/rooms`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newRoomName }),
+      });
+      if (!response.ok) {
+        const body = (await response.json()) as { error?: string };
+        if (body.error === "room_name_taken") setError("That Room name already exists in this Community.");
+        else if (body.error === "room_limit") setError("This Community has reached its 25-Room beta limit.");
+        else if (body.error === "not_authorized") setError("You no longer have permission to create Rooms.");
+        else setError("Use a short, distinct Room name and try again.");
+        return;
+      }
+      const room = (await response.json()) as Room;
+      setRoomsByCommunity((current) => ({ ...current, [room.community_id]: [...(current[room.community_id] ?? []), room] }));
+      setNewRoomName("");
+      setNotice(`#${room.name} is ready.`);
+      openRoom(room);
+    } catch {
+      setError("Skyroom could not create this Room. Check your connection and try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function revokeInvitation() {
     if (!invitation) return;
     setBusy(true);
@@ -238,12 +272,22 @@ export function CommunityOnboarding({ userID, userHandle, initialRoomID, onSignO
                   ))}
                 </div>
                 {selectedCommunity.owner_user_id === userID && (
-                  <details className="workspace-tools">
-                    <summary>Invite members</summary>
-                    <label htmlFor="invite-max-uses">Use limit <span>(optional)</span></label>
-                    <input id="invite-max-uses" type="number" min={1} max={10000} value={maxUses} onChange={(event) => setMaxUses(event.target.value)} placeholder="Unlimited" />
-                    <button type="button" disabled={busy} onClick={() => void createInvitation(selectedCommunity.id)}>Create invitation</button>
-                  </details>
+                  <div className="workspace-actions">
+                    <details className="workspace-tools room-create-tools">
+                      <summary>Create a Room</summary>
+                      <form onSubmit={createRoom}>
+                        <label htmlFor="new-room-name">Room name</label>
+                        <input id="new-room-name" required minLength={1} maxLength={80} value={newRoomName} onChange={(event) => setNewRoomName(event.target.value)} placeholder="product-design" />
+                        <button type="submit" disabled={busy || !newRoomName.trim()}>Create text Room</button>
+                      </form>
+                    </details>
+                    <details className="workspace-tools">
+                      <summary>Invite members</summary>
+                      <label htmlFor="invite-max-uses">Use limit <span>(optional)</span></label>
+                      <input id="invite-max-uses" type="number" min={1} max={10000} value={maxUses} onChange={(event) => setMaxUses(event.target.value)} placeholder="Unlimited" />
+                      <button type="button" disabled={busy} onClick={() => void createInvitation(selectedCommunity.id)}>Create invitation</button>
+                    </details>
+                  </div>
                 )}
               </>
             ) : <p className="room-navigation__empty">Create a Community to begin.</p>}

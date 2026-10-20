@@ -5,12 +5,15 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/SkyC0der/skyroom/internal/identity"
 	"github.com/SkyC0der/skyroom/internal/permission"
 )
+
+var roomNameSeparators = regexp.MustCompile(`[^a-z0-9]+`)
 
 type Authenticator interface {
 	Authenticate(context.Context, string) (identity.AuthenticatedSession, error)
@@ -57,6 +60,19 @@ func (s *Service) ListRooms(ctx context.Context, sessionToken, communityID strin
 		return nil, err
 	}
 	return s.store.ListRooms(ctx, authenticated.User.ID, communityID)
+}
+
+func (s *Service) CreateRoom(ctx context.Context, sessionToken, communityID, name string) (Room, error) {
+	authenticated, err := s.auth.Authenticate(ctx, sessionToken)
+	if err != nil {
+		return Room{}, err
+	}
+	name = roomNameSeparators.ReplaceAllString(strings.ToLower(strings.TrimSpace(name)), "-")
+	name = strings.Trim(name, "-")
+	if len(name) < 1 || len(name) > 80 {
+		return Room{}, ErrInvalidRoom
+	}
+	return s.store.CreateRoom(ctx, authenticated.User.ID, communityID, name, s.now().UTC())
 }
 
 func (s *Service) CreateInvitation(ctx context.Context, sessionToken, communityID string, maxUses *int) (Invitation, error) {

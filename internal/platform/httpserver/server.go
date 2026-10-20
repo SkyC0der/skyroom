@@ -95,6 +95,7 @@ func New(logger *slog.Logger, webOrigin string, options ...Option) http.Handler 
 		mux.HandleFunc("GET /api/v1/communities", communities.list)
 		mux.HandleFunc("POST /api/v1/communities", communities.create)
 		mux.HandleFunc("GET /api/v1/communities/{communityID}/rooms", communities.listRooms)
+		mux.HandleFunc("POST /api/v1/communities/{communityID}/rooms", communities.createRoom)
 		mux.HandleFunc("POST /api/v1/communities/{communityID}/invitations", communities.createInvitation)
 		mux.HandleFunc("DELETE /api/v1/communities/{communityID}/invitations/{invitationID}", communities.revokeInvitation)
 		mux.HandleFunc("GET /api/v1/invitations/{token}", communities.previewInvitation)

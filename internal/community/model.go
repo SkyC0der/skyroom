@@ -17,10 +17,14 @@ var (
 	ErrInvitationExpired   = errors.New("invitation expired")
 	ErrInvitationRevoked   = errors.New("invitation revoked")
 	ErrInvitationExhausted = errors.New("invitation exhausted")
+	ErrInvalidRoom         = errors.New("invalid room")
+	ErrRoomLimit           = errors.New("room limit reached")
+	ErrRoomNameTaken       = errors.New("room name taken")
 )
 
 const (
 	ownedCommunityLimit = 3
+	communityRoomLimit  = 25
 	invitationLifetime  = 7 * 24 * time.Hour
 )
 
@@ -87,6 +91,7 @@ type Store interface {
 	CreateCommunity(ctx context.Context, ownerUserID, ownerHandle, name, description string, now time.Time) (CreatedCommunity, error)
 	ListCommunities(ctx context.Context, userID string) ([]Community, error)
 	ListRooms(ctx context.Context, userID, communityID string) ([]Room, error)
+	CreateRoom(ctx context.Context, userID, communityID, name string, now time.Time) (Room, error)
 	CreateInvitation(ctx context.Context, userID, communityID string, tokenHash []byte, expiresAt time.Time, maxUses *int, now time.Time) (Invitation, error)
 	PreviewInvitation(ctx context.Context, tokenHash []byte, now time.Time) (InvitationPreview, error)
 	JoinInvitation(ctx context.Context, userID, handle string, tokenHash []byte, now time.Time) (JoinResult, error)

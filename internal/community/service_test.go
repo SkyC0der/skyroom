@@ -3,6 +3,7 @@ package community
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/SkyC0der/skyroom/internal/identity"
@@ -132,5 +133,56 @@ func TestInvitationCanBeRevokedAndOwnershipIsLimited(t *testing.T) {
 	}
 	if _, err := service.Create(ctx, ownerToken, "Fourth Community", ""); !errors.Is(err, ErrOwnershipLimit) {
 		t.Fatalf("expected ownership limit, got %v", err)
+	}
+}
+
+func TestCreateRoomEnforcesCapabilityNamingAndQuota(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	sender := &testSender{}
+	auth := identity.NewService(identity.NewMemoryStore(), sender, "test-secret")
+	store := NewMemoryStore()
+	service := NewService(store, auth)
+	ownerToken := verifiedUser(t, auth, sender, "room-owner@example.com", "room.owner")
+	created, err := service.Create(ctx, ownerToken, "Room Makers", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	room, err := service.CreateRoom(ctx, ownerToken, created.Community.ID, "  Product & Design  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if room.Name != "product-design" || room.Kind != "text" || room.Visibility != "members" {
+		t.Fatalf("unexpected Room: %+v", room)
+	}
+	if len(store.auditEvents) != 1 || store.auditEvents[0].TargetID != room.ID || store.auditEvents[0].Action != "room.created" {
+		t.Fatalf("expected atomic room.created audit event, got %+v", store.auditEvents)
+	}
+	if _, err := service.CreateRoom(ctx, ownerToken, created.Community.ID, "product design"); !errors.Is(err, ErrRoomNameTaken) {
+		t.Fatalf("expected normalized duplicate name rejection, got %v", err)
+	}
+
+	invitation, err := service.CreateInvitation(ctx, ownerToken, created.Community.ID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	memberToken := verifiedUser(t, auth, sender, "room-member@example.com", "room.member")
+	if _, err := service.Join(ctx, memberToken, invitation.Token); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.CreateRoom(ctx, memberToken, created.Community.ID, "not-allowed"); !errors.Is(err, ErrNotAuthorized) {
+		t.Fatalf("expected CREATE_ROOM denial, got %v", err)
+	}
+	if _, err := service.CreateRoom(ctx, ownerToken, created.Community.ID, "***"); !errors.Is(err, ErrInvalidRoom) {
+		t.Fatalf("expected invalid normalized name, got %v", err)
+	}
+
+	for index := 0; index < communityRoomLimit-2; index++ {
+		if _, err := service.CreateRoom(ctx, ownerToken, created.Community.ID, fmt.Sprintf("room-%02d", index)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := service.CreateRoom(ctx, ownerToken, created.Community.ID, "over-quota"); !errors.Is(err, ErrRoomLimit) {
+		t.Fatalf("expected Room quota, got %v", err)
 	}
 }

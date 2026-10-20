@@ -70,6 +70,21 @@ func TestCommunityInvitationHTTPFlow(t *testing.T) {
 	if len(listed.Rooms) != 1 || listed.Rooms[0].ID != created.GeneralRoom.ID {
 		t.Fatalf("unexpected Room listing: %+v", listed.Rooms)
 	}
+	request = httptest.NewRequest(http.MethodPost, "/api/v1/communities/"+created.Community.ID+"/rooms", bytes.NewBufferString(`{"name":"Product Design"}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.AddCookie(ownerCookie)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create Room: status=%d body=%s", response.Code, response.Body.String())
+	}
+	var createdRoom community.Room
+	if err := json.NewDecoder(response.Body).Decode(&createdRoom); err != nil {
+		t.Fatal(err)
+	}
+	if createdRoom.Name != "product-design" || createdRoom.CommunityID != created.Community.ID {
+		t.Fatalf("unexpected created Room: %+v", createdRoom)
+	}
 
 	request = httptest.NewRequest(http.MethodPost, "/api/v1/communities/"+created.Community.ID+"/invitations", bytes.NewBufferString(`{"max_uses":2}`))
 	request.Header.Set("Content-Type", "application/json")

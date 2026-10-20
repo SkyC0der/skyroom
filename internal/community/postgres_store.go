@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/SkyC0der/skyroom/internal/permission"
@@ -165,6 +166,68 @@ func (s *PostgresStore) ListRooms(ctx context.Context, userID, communityID strin
 		return nil, fmt.Errorf("list rooms: %w", err)
 	}
 	return rooms, nil
+}
+
+func (s *PostgresStore) CreateRoom(ctx context.Context, userID, communityID, name string, now time.Time) (Room, error) {
+	roomID, err := platformid.New()
+	if err != nil {
+		return Room{}, err
+	}
+	auditID, err := platformid.New()
+	if err != nil {
+		return Room{}, err
+	}
+	var room Room
+	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('community.rooms:' || $1, 0))`, communityID); err != nil {
+			return fmt.Errorf("lock community rooms: %w", err)
+		}
+		var memberID string
+		var capabilities int64
+		err := tx.QueryRow(ctx, `
+			SELECT member.id::text, COALESCE(bit_or(role.permissions), 0)
+			FROM members member
+			JOIN member_roles assignment ON assignment.member_id = member.id AND assignment.community_id = member.community_id
+			JOIN roles role ON role.id = assignment.role_id AND role.community_id = assignment.community_id
+			WHERE member.user_id = $1 AND member.community_id = $2 AND member.state = 'active'
+			GROUP BY member.id`, userID, communityID).Scan(&memberID, &capabilities)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotAuthorized
+		}
+		if err != nil {
+			return fmt.Errorf("authorize room creation: %w", err)
+		}
+		if permission.Capability(capabilities)&permission.CreateRoom == 0 {
+			return ErrNotAuthorized
+		}
+		var roomCount int
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM rooms WHERE community_id = $1`, communityID).Scan(&roomCount); err != nil {
+			return fmt.Errorf("count community rooms: %w", err)
+		}
+		if roomCount >= communityRoomLimit {
+			return ErrRoomLimit
+		}
+		if err := tx.QueryRow(ctx, `
+			INSERT INTO rooms (id, community_id, creator_member_id, kind, name, visibility, created_at)
+			VALUES ($1, $2, $3, 'text', $4, 'members', $5)
+			RETURNING id::text, community_id::text, name, kind, visibility, created_at`,
+			roomID, communityID, memberID, name, now,
+		).Scan(&room.ID, &room.CommunityID, &room.Name, &room.Kind, &room.Visibility, &room.CreatedAt); err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+				return ErrRoomNameTaken
+			}
+			return fmt.Errorf("insert room: %w", err)
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO audit_events (id, community_id, actor_member_id, action, target_type, target_id, metadata, created_at)
+			VALUES ($1, $2, $3, 'room.created', 'room', $4, jsonb_build_object('name', $5, 'kind', 'text', 'visibility', 'members'), $6)`,
+			auditID, communityID, memberID, roomID, name, now); err != nil {
+			return fmt.Errorf("insert room audit event: %w", err)
+		}
+		return nil
+	})
+	return room, err
 }
 
 func (s *PostgresStore) CreateInvitation(ctx context.Context, userID, communityID string, tokenHash []byte, expiresAt time.Time, maxUses *int, now time.Time) (Invitation, error) {

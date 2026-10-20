@@ -94,3 +94,34 @@ func TestPostgresCommunityTransactionAndInvitationJoin(t *testing.T) {
 		t.Fatalf("expected invitation to be exhausted, got %v", err)
 	}
 }
+
+func TestPostgresRoomCreationIsAuthorizedAndAudited(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	pool := pgtest.MigratedPool(t)
+	sender := &testSender{}
+	auth := identity.NewService(identity.NewPostgresStore(pool), sender, "test-secret")
+	service := NewService(NewPostgresStore(pool), auth)
+	ownerToken := verifiedUser(t, auth, sender, "postgres-room-owner@example.com", "pg.room.owner")
+	created, err := service.Create(ctx, ownerToken, "Postgres Rooms", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	room, err := service.CreateRoom(ctx, ownerToken, created.Community.ID, "Operations Hub")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var action, targetID, auditedName string
+	if err := pool.QueryRow(ctx, `
+		SELECT action, target_id::text, metadata->>'name'
+		FROM audit_events WHERE community_id = $1`, created.Community.ID,
+	).Scan(&action, &targetID, &auditedName); err != nil {
+		t.Fatal(err)
+	}
+	if action != "room.created" || targetID != room.ID || auditedName != "operations-hub" {
+		t.Fatalf("unexpected audit event: action=%s target=%s name=%s", action, targetID, auditedName)
+	}
+	if _, err := service.CreateRoom(ctx, ownerToken, created.Community.ID, "Operations Hub"); !errors.Is(err, ErrRoomNameTaken) {
+		t.Fatalf("expected duplicate Room rejection, got %v", err)
+	}
+}

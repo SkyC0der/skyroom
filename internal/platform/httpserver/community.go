@@ -21,6 +21,10 @@ type createInvitationRequest struct {
 	MaxUses *int `json:"max_uses"`
 }
 
+type createRoomRequest struct {
+	Name string `json:"name"`
+}
+
 func (h communityHandlers) create(w http.ResponseWriter, r *http.Request) {
 	token, ok := readSessionToken(r)
 	if !ok {
@@ -65,6 +69,24 @@ func (h communityHandlers) listRooms(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"rooms": rooms})
+}
+
+func (h communityHandlers) createRoom(w http.ResponseWriter, r *http.Request) {
+	token, ok := readSessionToken(r)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthenticated"})
+		return
+	}
+	var request createRoomRequest
+	if !decodeJSON(w, r, &request) {
+		return
+	}
+	room, err := h.service.CreateRoom(r.Context(), token, r.PathValue("communityID"), request.Name)
+	if err != nil {
+		writeCommunityError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, room)
 }
 
 func (h communityHandlers) createInvitation(w http.ResponseWriter, r *http.Request) {
@@ -133,6 +155,12 @@ func writeCommunityError(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "owned_community_limit"})
 	case errors.Is(err, community.ErrNotAuthorized):
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "not_authorized"})
+	case errors.Is(err, community.ErrInvalidRoom):
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_room"})
+	case errors.Is(err, community.ErrRoomLimit):
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "room_limit"})
+	case errors.Is(err, community.ErrRoomNameTaken):
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "room_name_taken"})
 	case errors.Is(err, community.ErrInvalidInvitation):
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "invitation_not_found"})
 	case errors.Is(err, community.ErrInvitationExpired):

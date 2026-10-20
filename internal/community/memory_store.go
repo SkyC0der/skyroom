@@ -18,6 +18,13 @@ type memoryInvitation struct {
 	InviterHandle string
 }
 
+type memoryAuditEvent struct {
+	CommunityID string
+	ActorUserID string
+	Action      string
+	TargetID    string
+}
+
 type MemoryStore struct {
 	mu              sync.Mutex
 	communities     map[string]Community
@@ -25,7 +32,38 @@ type MemoryStore struct {
 	permissions     map[string]map[string]permission.Capability
 	invitations     map[string]*memoryInvitation
 	rooms           map[string]Room
+	auditEvents     []memoryAuditEvent
 	roomCommunities map[string]string
+}
+
+func (s *MemoryStore) CreateRoom(_ context.Context, userID, communityID, name string, now time.Time) (Room, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.permissions[communityID][userID]&permission.CreateRoom == 0 {
+		return Room{}, ErrNotAuthorized
+	}
+	count := 0
+	for _, room := range s.rooms {
+		if room.CommunityID != communityID {
+			continue
+		}
+		count++
+		if room.Name == name {
+			return Room{}, ErrRoomNameTaken
+		}
+	}
+	if count >= communityRoomLimit {
+		return Room{}, ErrRoomLimit
+	}
+	roomID, err := platformid.New()
+	if err != nil {
+		return Room{}, err
+	}
+	room := Room{ID: roomID, CommunityID: communityID, Name: name, Kind: "text", Visibility: "members", CreatedAt: now}
+	s.rooms[roomID] = room
+	s.roomCommunities[roomID] = communityID
+	s.auditEvents = append(s.auditEvents, memoryAuditEvent{CommunityID: communityID, ActorUserID: userID, Action: "room.created", TargetID: roomID})
+	return room, nil
 }
 
 func NewMemoryStore() *MemoryStore {

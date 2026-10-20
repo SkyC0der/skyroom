@@ -912,9 +912,17 @@ button:disabled {
 }
 
 .workspace-tools {
-  margin: auto 12px 14px;
+  margin: 0 12px 14px;
   padding-top: 14px;
   border-top: 1px solid var(--line);
+}
+
+.workspace-actions {
+  margin-top: auto;
+}
+
+.room-create-tools form {
+  display: block;
 }
 
 .workspace-tools summary,
