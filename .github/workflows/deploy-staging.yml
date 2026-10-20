@@ -20,6 +20,8 @@ jobs:
     needs: ci
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v5
+
       - name: Configure SSH
         env:
           SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
@@ -38,6 +40,8 @@ jobs:
             "skyroom@$VPS_HOST" "deploy $GITHUB_SHA"
 
       - name: Verify public health
+        env:
+          SKYROOM_API_BASE_URL: https://api.rooms.studioeco.co/api/v1
+          SKYROOM_WEB_ORIGIN: https://rooms.studioeco.co
         run: |
-          curl -fsS --retry 10 --retry-delay 6 --retry-all-errors \
-            https://api.rooms.studioeco.co/api/v1/health
+          ./platform/deployment/smoke.sh

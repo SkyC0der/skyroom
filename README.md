@@ -59,6 +59,13 @@ npm run lint
 npm run build:web
 ```
 
+The PostgreSQL-backed activation journey runs automatically in CI. To exercise it locally against the development database:
+
+```bash
+SKYROOM_TEST_DATABASE_URL='postgres://skyroom:skyroom-local@localhost:5434/skyroom?sslmode=disable' \
+  go test -race ./internal/platform/httpserver -run TestActivationJourney
+```
+
 The HTTP endpoints are defined in `contracts/openapi.yaml`. They cover identity, Communities, invitations, idempotent joins, and durable Room Messages with cursor history. PostgreSQL is used whenever `DATABASE_URL` is set; development falls back to memory only when it is absent. The API applies embedded migrations at startup.
 
 ## Deployment
@@ -83,3 +90,5 @@ Repository secrets: `VPS_HOST`, `VPS_SSH_KEY` (CI private key), `VPS_KNOWN_HOSTS
 ```bash
 install -m 755 platform/deployment/vps-deploy-wrapper.sh /home/skyroom/bin/skyroom-deploy
 ```
+
+The deploy workflow runs `platform/deployment/smoke.sh` against the public API after each successful staging deploy. Operators can verify a logical PostgreSQL backup without retaining local data by running `DATABASE_URL=... platform/deployment/verify-backup.sh` from a host with PostgreSQL client tools installed.

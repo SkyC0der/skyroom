@@ -379,6 +379,31 @@ paths:
                   status:
                     type: string
                     const: alive
+  /metrics:
+    get:
+      operationId: getServiceMetrics
+      summary: Report aggregate HTTP request, latency, and error counters
+      responses:
+        "200":
+          description: Process-local counters for basic operational monitoring.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [requests_total, client_errors_total, server_errors_total, request_duration_microseconds_total]
+                properties:
+                  requests_total:
+                    type: integer
+                    minimum: 0
+                  client_errors_total:
+                    type: integer
+                    minimum: 0
+                  server_errors_total:
+                    type: integer
+                    minimum: 0
+                  request_duration_microseconds_total:
+                    type: integer
+                    minimum: 0
 components:
   parameters:
     CommunityID:

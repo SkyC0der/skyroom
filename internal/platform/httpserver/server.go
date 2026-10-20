@@ -2,19 +2,43 @@ package httpserver
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/SkyC0der/skyroom/internal/community"
 	"github.com/SkyC0der/skyroom/internal/conversation"
 	"github.com/SkyC0der/skyroom/internal/identity"
+	platformid "github.com/SkyC0der/skyroom/internal/platform/id"
 )
 
 type healthResponse struct {
 	Status string `json:"status"`
 	Time   string `json:"time"`
+}
+
+type requestMetrics struct {
+	requests            atomic.Uint64
+	clientErrors        atomic.Uint64
+	serverErrors        atomic.Uint64
+	totalDurationMicros atomic.Uint64
+}
+
+type metricsResponse struct {
+	Requests            uint64 `json:"requests_total"`
+	ClientErrors        uint64 `json:"client_errors_total"`
+	ServerErrors        uint64 `json:"server_errors_total"`
+	TotalDurationMicros uint64 `json:"request_duration_microseconds_total"`
+}
+
+func (m *requestMetrics) snapshot() metricsResponse {
+	return metricsResponse{
+		Requests: m.requests.Load(), ClientErrors: m.clientErrors.Load(),
+		ServerErrors: m.serverErrors.Load(), TotalDurationMicros: m.totalDurationMicros.Load(),
+	}
 }
 
 type config struct {
@@ -52,8 +76,12 @@ func New(logger *slog.Logger, webOrigin string, options ...Option) http.Handler 
 	}
 
 	mux := http.NewServeMux()
+	metrics := &requestMetrics{}
 	mux.HandleFunc("GET /api/v1/health", health)
 	mux.HandleFunc("GET /api/v1/health/live", live)
+	mux.HandleFunc("GET /api/v1/metrics", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, metrics.snapshot())
+	})
 	if configuration.identity != nil {
 		auth := authHandlers{service: configuration.identity, secureCookies: configuration.secureCookies}
 		mux.HandleFunc("POST /api/v1/auth/codes", auth.requestCode)
@@ -80,7 +108,7 @@ func New(logger *slog.Logger, webOrigin string, options ...Option) http.Handler 
 		mux.HandleFunc("PUT /api/v1/rooms/{roomID}/read-state", conversations.markRead)
 	}
 
-	return recoverPanic(logger, requestLog(logger, cors(webOrigin, enforceOrigin(webOrigin, mux))))
+	return requestLog(logger, metrics, recoverPanic(logger, cors(webOrigin, enforceOrigin(webOrigin, mux))))
 }
 
 func enforceOrigin(origin string, next http.Handler) http.Handler {
@@ -127,7 +155,7 @@ func cors(origin string, next http.Handler) http.Handler {
 		if requestOrigin != "" && requestOrigin == origin {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
-			w.Header().Set("Access-Control-Expose-Headers", "Retry-After")
+			w.Header().Set("Access-Control-Expose-Headers", "Retry-After, X-Request-ID")
 			w.Header().Set("Vary", "Origin")
 		}
 		if r.Method == http.MethodOptions {
@@ -140,14 +168,65 @@ func cors(origin string, next http.Handler) http.Handler {
 	})
 }
 
-func requestLog(logger *slog.Logger, next http.Handler) http.Handler {
+type responseObserver struct {
+	http.ResponseWriter
+	status int
+	bytes  int
+}
+
+func (w *responseObserver) WriteHeader(status int) {
+	if w.status != 0 {
+		return
+	}
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *responseObserver) Write(body []byte) (int, error) {
+	if w.status == 0 {
+		w.WriteHeader(http.StatusOK)
+	}
+	written, err := w.ResponseWriter.Write(body)
+	w.bytes += written
+	return written, err
+}
+
+func (w *responseObserver) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
+func requestLog(logger *slog.Logger, metrics *requestMetrics, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		started := time.Now()
-		next.ServeHTTP(w, r)
+		requestID, err := platformid.New()
+		if err != nil {
+			requestID = fmt.Sprintf("fallback-%d", started.UnixNano())
+		}
+		w.Header().Set("X-Request-ID", requestID)
+		observer := &responseObserver{ResponseWriter: w}
+		next.ServeHTTP(observer, r)
+		if observer.status == 0 {
+			observer.status = http.StatusOK
+		}
+		duration := time.Since(started)
+		durationMicros := duration.Microseconds()
+		if durationMicros < 1 {
+			durationMicros = 1
+		}
+		metrics.requests.Add(1)
+		metrics.totalDurationMicros.Add(uint64(durationMicros))
+		if observer.status >= 500 {
+			metrics.serverErrors.Add(1)
+		} else if observer.status >= 400 {
+			metrics.clientErrors.Add(1)
+		}
 		logger.Info("request completed",
+			"request_id", requestID,
 			"method", r.Method,
 			"path", r.URL.Path,
-			"duration_ms", time.Since(started).Milliseconds(),
+			"status", observer.status,
+			"response_bytes", observer.bytes,
+			"duration_ms", duration.Milliseconds(),
 		)
 	})
 }

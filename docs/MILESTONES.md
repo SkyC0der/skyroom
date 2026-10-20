@@ -85,6 +85,8 @@ Goal: validate the complete activation path on one Go process and PostgreSQL.
 **Mode:** HITL for production secrets and final domain checks  
 **Blocked by:** M1.6
 
+**Status:** In progress — the PostgreSQL activation journey, structured request logs, process metrics, public smoke script, and logical-backup verification are implemented; staging deployment and final domain checks require production access.
+
 - Exercise the activation journey in an end-to-end test.
 - Add structured logs, basic latency/error metrics, backup verification, and a smoke test.
 - Deploy web to `rooms.studioeco.co`, API/WebSocket to `api.rooms.studioeco.co`, and PostgreSQL to Neon.
