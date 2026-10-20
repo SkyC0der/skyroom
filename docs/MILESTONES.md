@@ -72,6 +72,8 @@ Goal: validate the complete activation path on one Go process and PostgreSQL.
 **Mode:** AFK  
 **Blocked by:** M1.5
 
+**Status:** Complete
+
 - Authorize WebSocket subscriptions.
 - Fan out committed Message events through bounded connection queues.
 - Reconnect with jittered backoff and recover cursor gaps through HTTP.

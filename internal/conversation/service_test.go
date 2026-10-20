@@ -107,3 +107,85 @@ func TestHistoryRejectsInvalidCursor(t *testing.T) {
 		t.Fatalf("expected invalid cursor, got %v", err)
 	}
 }
+
+func TestSubscribeAuthorizesAndPublishesCommittedMessagesOnce(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	sender := &testSender{}
+	auth := identity.NewService(identity.NewMemoryStore(), sender, "test-secret")
+	communities := community.NewMemoryStore()
+	communityService := community.NewService(communities, auth)
+	service := NewService(NewMemoryStore(communities), auth)
+	ownerToken := verifiedUser(t, auth, sender, "live-owner@example.com", "live.owner")
+	created, err := communityService.Create(ctx, ownerToken, "Live Guild", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	subscription, err := service.Subscribe(ctx, ownerToken, created.GeneralRoom.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer subscription.Cancel()
+	posted, err := service.Post(ctx, ownerToken, created.GeneralRoom.ID, "live-client-key", "Arrives live")
+	if err != nil {
+		t.Fatal(err)
+	}
+	event := <-subscription.Events
+	if event.Type != "message.created" || event.EventID != posted.Message.ID || event.Cursor == "" || event.Payload.Message.Body != "Arrives live" {
+		t.Fatalf("unexpected event: %+v", event)
+	}
+	if _, err := service.Post(ctx, ownerToken, created.GeneralRoom.ID, "live-client-key", "Arrives live"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case duplicate := <-subscription.Events:
+		t.Fatalf("idempotent retry published a duplicate event: %+v", duplicate)
+	default:
+	}
+
+	outsiderToken := verifiedUser(t, auth, sender, "live-outsider@example.com", "live.outsider")
+	if _, err := service.Subscribe(ctx, outsiderToken, created.GeneralRoom.ID); !errors.Is(err, ErrNotAuthorized) {
+		t.Fatalf("expected subscription authorization failure, got %v", err)
+	}
+}
+
+func TestReadStateCountsUnreadAndNeverMovesBackward(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	sender := &testSender{}
+	auth := identity.NewService(identity.NewMemoryStore(), sender, "test-secret")
+	communities := community.NewMemoryStore()
+	communityService := community.NewService(communities, auth)
+	service := NewService(NewMemoryStore(communities), auth)
+	token := verifiedUser(t, auth, sender, "reader@example.com", "room.reader")
+	created, err := communityService.Create(ctx, token, "Readers", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.now = func() time.Time { return time.Date(2026, 10, 20, 10, 0, 0, 0, time.UTC) }
+	first, err := service.Post(ctx, token, created.GeneralRoom.ID, "read-client-1", "First unread")
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.now = func() time.Time { return time.Date(2026, 10, 20, 10, 0, 1, 0, time.UTC) }
+	second, err := service.Post(ctx, token, created.GeneralRoom.ID, "read-client-2", "Second unread")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := service.ReadState(ctx, token, created.GeneralRoom.ID)
+	if err != nil || state.UnreadCount != 2 || state.LastReadMessageID != "" {
+		t.Fatalf("unexpected initial read state: state=%+v err=%v", state, err)
+	}
+	state, err = service.MarkRead(ctx, token, created.GeneralRoom.ID, second.Message.ID)
+	if err != nil || state.UnreadCount != 0 || state.LastReadMessageID != second.Message.ID || state.Cursor == "" {
+		t.Fatalf("unexpected marked read state: state=%+v err=%v", state, err)
+	}
+	state, err = service.MarkRead(ctx, token, created.GeneralRoom.ID, first.Message.ID)
+	if err != nil || state.LastReadMessageID != second.Message.ID {
+		t.Fatalf("read cursor moved backward: state=%+v err=%v", state, err)
+	}
+	if _, err := service.MarkRead(ctx, token, created.GeneralRoom.ID, "not-a-message"); !errors.Is(err, ErrInvalidCursor) {
+		t.Fatalf("expected invalid read cursor, got %v", err)
+	}
+}

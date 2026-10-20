@@ -55,6 +55,7 @@ func TestPostgresMessageAndOutboxCommitAtomically(t *testing.T) {
 	}
 	var envelope struct {
 		Type    string `json:"type"`
+		Cursor  string `json:"cursor"`
 		Payload struct {
 			Message Message `json:"message"`
 		} `json:"payload"`
@@ -62,8 +63,16 @@ func TestPostgresMessageAndOutboxCommitAtomically(t *testing.T) {
 	if err := json.Unmarshal(payload, &envelope); err != nil {
 		t.Fatal(err)
 	}
-	if envelope.Type != "message.created" || envelope.Payload.Message.ID != posted.Message.ID {
+	if envelope.Type != "message.created" || envelope.Cursor == "" || envelope.Payload.Message.ID != posted.Message.ID {
 		t.Fatalf("unexpected outbox envelope: %+v", envelope)
+	}
+	readState, err := service.ReadState(ctx, memberToken, created.GeneralRoom.ID)
+	if err != nil || readState.UnreadCount != 1 {
+		t.Fatalf("unexpected initial PostgreSQL read state: state=%+v err=%v", readState, err)
+	}
+	readState, err = service.MarkRead(ctx, memberToken, created.GeneralRoom.ID, posted.Message.ID)
+	if err != nil || readState.UnreadCount != 0 || readState.LastReadMessageID != posted.Message.ID || readState.Cursor == "" {
+		t.Fatalf("unexpected PostgreSQL marked read state: state=%+v err=%v", readState, err)
 	}
 	other, err := communityService.Create(ctx, ownerToken, "Other Postgres Room", "")
 	if err != nil {

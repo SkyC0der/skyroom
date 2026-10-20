@@ -47,6 +47,7 @@ func (s *PostgresStore) CreateMessage(ctx context.Context, userID, authorHandle,
 		return PostResult{}, err
 	}
 	var result PostResult
+	result.EventID = eventID
 	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		var memberID string
 		if err := tx.QueryRow(ctx, `
@@ -95,7 +96,8 @@ func (s *PostgresStore) CreateMessage(ctx context.Context, userID, authorHandle,
 		envelope := map[string]any{
 			"event_id": eventID, "type": "message.created", "occurred_at": now,
 			"community_id": result.Message.CommunityID, "room_id": roomID, "actor_id": userID,
-			"schema_version": 1, "payload": map[string]any{"message": result.Message},
+			"schema_version": 1, "cursor": encodeCursor(result.Message),
+			"payload": map[string]any{"message": result.Message},
 		}
 		payload, err := json.Marshal(envelope)
 		if err != nil {
@@ -158,6 +160,79 @@ func (s *PostgresStore) ListMessages(ctx context.Context, roomID string, query H
 		reverseMessages(result.Messages)
 	}
 	return result, nil
+}
+
+func (s *PostgresStore) GetReadState(ctx context.Context, userID, roomID string) (ReadState, error) {
+	var state ReadState
+	var lastMessageID *string
+	var lastReadAt *time.Time
+	err := s.pool.QueryRow(ctx, `
+		SELECT cursor.last_message_id::text, cursor.last_read_created_at, count(message.id)::int
+		FROM rooms room
+		JOIN members member ON member.community_id = room.community_id
+			AND member.user_id = $1 AND member.state = 'active'
+		LEFT JOIN read_cursors cursor ON cursor.member_id = member.id AND cursor.room_id = room.id
+		LEFT JOIN messages message ON message.room_id = room.id AND (
+			cursor.last_message_id IS NULL OR
+			(message.created_at, message.id) > (cursor.last_read_created_at, cursor.last_message_id)
+		)
+		WHERE room.id = $2
+		GROUP BY cursor.last_message_id, cursor.last_read_created_at`, userID, roomID,
+	).Scan(&lastMessageID, &lastReadAt, &state.UnreadCount)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ReadState{}, ErrNotAuthorized
+	}
+	if err != nil {
+		return ReadState{}, fmt.Errorf("get Room read state: %w", err)
+	}
+	if lastMessageID != nil && lastReadAt != nil {
+		state.LastReadMessageID = *lastMessageID
+		state.Cursor = encodeCursor(Message{ID: *lastMessageID, CreatedAt: *lastReadAt})
+	}
+	return state, nil
+}
+
+func (s *PostgresStore) MarkRead(ctx context.Context, userID, roomID, messageID string, now time.Time) (ReadState, error) {
+	transaction, err := s.pool.Begin(ctx)
+	if err != nil {
+		return ReadState{}, fmt.Errorf("begin mark Room read: %w", err)
+	}
+	defer func() { _ = transaction.Rollback(ctx) }()
+	var communityID, memberID string
+	var messageCreatedAt time.Time
+	err = transaction.QueryRow(ctx, `
+		SELECT room.community_id::text, member.id::text, message.created_at
+		FROM rooms room
+		JOIN members member ON member.community_id = room.community_id
+			AND member.user_id = $1 AND member.state = 'active'
+		JOIN messages message ON message.room_id = room.id AND message.id = $3
+		WHERE room.id = $2
+		FOR SHARE OF room, member, message`, userID, roomID, messageID,
+	).Scan(&communityID, &memberID, &messageCreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ReadState{}, ErrInvalidCursor
+	}
+	if err != nil {
+		return ReadState{}, fmt.Errorf("resolve Room read cursor: %w", err)
+	}
+	if _, err := transaction.Exec(ctx, `
+		INSERT INTO read_cursors (
+			member_id, community_id, room_id, last_message_id, last_read_created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (member_id, room_id) DO UPDATE SET
+			last_message_id = EXCLUDED.last_message_id,
+			last_read_created_at = EXCLUDED.last_read_created_at,
+			updated_at = EXCLUDED.updated_at
+		WHERE (read_cursors.last_read_created_at, read_cursors.last_message_id) <
+			(EXCLUDED.last_read_created_at, EXCLUDED.last_message_id)`,
+		memberID, communityID, roomID, messageID, messageCreatedAt, now,
+	); err != nil {
+		return ReadState{}, fmt.Errorf("upsert Room read cursor: %w", err)
+	}
+	if err := transaction.Commit(ctx); err != nil {
+		return ReadState{}, fmt.Errorf("commit Room read cursor: %w", err)
+	}
+	return s.GetReadState(ctx, userID, roomID)
 }
 
 func reverseMessages(messages []Message) {

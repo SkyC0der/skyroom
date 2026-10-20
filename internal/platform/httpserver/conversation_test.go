@@ -8,11 +8,14 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/SkyC0der/skyroom/internal/community"
 	"github.com/SkyC0der/skyroom/internal/conversation"
 	"github.com/SkyC0der/skyroom/internal/identity"
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 )
 
 func TestConversationHTTPFlow(t *testing.T) {
@@ -84,5 +87,99 @@ func TestConversationHTTPFlow(t *testing.T) {
 	}
 	if len(page.Messages) != 1 || page.Messages[0].Body != "Hello, room." || page.LatestCursor == "" {
 		t.Fatalf("unexpected history: %+v", page)
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/api/v1/rooms/"+created.GeneralRoom.ID+"/read-state", nil)
+	request.AddCookie(cookie)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	var readState conversation.ReadState
+	if response.Code != http.StatusOK {
+		t.Fatalf("get read state: status=%d body=%s", response.Code, response.Body.String())
+	}
+	if err := json.NewDecoder(response.Body).Decode(&readState); err != nil {
+		t.Fatal(err)
+	}
+	if readState.UnreadCount != 1 {
+		t.Fatalf("expected one unread Message, got %+v", readState)
+	}
+	request = httptest.NewRequest(http.MethodPut, "/api/v1/rooms/"+created.GeneralRoom.ID+"/read-state", strings.NewReader(`{"last_message_id":"`+posted.Message.ID+`"}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.AddCookie(cookie)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("mark read: status=%d body=%s", response.Code, response.Body.String())
+	}
+	if err := json.NewDecoder(response.Body).Decode(&readState); err != nil {
+		t.Fatal(err)
+	}
+	if readState.UnreadCount != 0 || readState.LastReadMessageID != posted.Message.ID {
+		t.Fatalf("unexpected marked read state: %+v", readState)
+	}
+}
+
+func TestRoomEventsWebSocketDeliversCommittedMessage(t *testing.T) {
+	ctx := context.Background()
+	sender := &handlerSender{}
+	auth := identity.NewService(identity.NewMemoryStore(), sender, "test-secret")
+	communityStore := community.NewMemoryStore()
+	communities := community.NewService(communityStore, auth)
+	conversations := conversation.NewService(conversation.NewMemoryStore(communityStore), auth)
+	handler := New(
+		slog.New(slog.NewTextHandler(io.Discard, nil)), "http://localhost:3000",
+		WithIdentity(auth, false), WithCommunity(communities), WithConversation(conversations),
+	)
+	if err := auth.RequestCode(ctx, "events-http@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	verified, err := auth.VerifyCode(ctx, "events-http@example.com", sender.code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := auth.ClaimHandle(ctx, verified.Token, "events.messenger"); err != nil {
+		t.Fatal(err)
+	}
+	created, err := communities.Create(ctx, verified.Token, "Live HTTP Messages", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	server := httptest.NewServer(handler)
+	defer server.Close()
+	header := http.Header{}
+	header.Set("Cookie", (&http.Cookie{Name: sessionCookieName, Value: verified.Token}).String())
+	header.Set("Origin", "http://localhost:3000")
+	connection, response, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/api/v1/rooms/"+created.GeneralRoom.ID+"/events", &websocket.DialOptions{HTTPHeader: header})
+	if err != nil {
+		if response != nil {
+			t.Fatalf("dial Room events: status=%d err=%v", response.StatusCode, err)
+		}
+		t.Fatal(err)
+	}
+	defer connection.CloseNow()
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL+"/api/v1/rooms/"+created.GeneralRoom.ID+"/messages", strings.NewReader(`{"client_idempotency_key":"websocket-client-key","body":"Live over WebSocket"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: verified.Token})
+	posted, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer posted.Body.Close()
+	if posted.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(posted.Body)
+		t.Fatalf("post message: status=%d body=%s", posted.StatusCode, body)
+	}
+
+	var event conversation.Event
+	if err := wsjson.Read(ctx, connection, &event); err != nil {
+		t.Fatal(err)
+	}
+	if event.Type != "message.created" || event.Payload.Message.Body != "Live over WebSocket" || event.Cursor == "" {
+		t.Fatalf("unexpected Room event: %+v", event)
 	}
 }

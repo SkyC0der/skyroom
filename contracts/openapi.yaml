@@ -291,6 +291,67 @@ paths:
           description: The current User cannot send Messages in the Room.
         "409":
           description: The idempotency key was reused with different Message content.
+  /rooms/{room_id}/events:
+    get:
+      operationId: subscribeRoomEvents
+      summary: Upgrade to an authorized WebSocket stream of committed Room events
+      description: Clients recover any delivery gap through the Message history endpoint using the event cursor.
+      parameters:
+        - $ref: "#/components/parameters/RoomID"
+      responses:
+        "101":
+          description: The connection was upgraded. Events conform to contracts/events/message.created.schema.json.
+        "401":
+          description: Authentication is required.
+        "403":
+          description: The current User cannot view the Room.
+  /rooms/{room_id}/read-state:
+    get:
+      operationId: getRoomReadState
+      summary: Get the current Member's durable Room read cursor and unread count
+      parameters:
+        - $ref: "#/components/parameters/RoomID"
+      responses:
+        "200":
+          description: The current read state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomReadState"
+        "401":
+          description: Authentication is required.
+        "403":
+          description: The current User cannot view the Room.
+    put:
+      operationId: markRoomRead
+      summary: Advance the current Member's durable Room read cursor
+      parameters:
+        - $ref: "#/components/parameters/RoomID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [last_message_id]
+              properties:
+                last_message_id:
+                  type: string
+                  format: uuid
+      responses:
+        "200":
+          description: The advanced read state. Older cursors never move it backward.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomReadState"
+        "400":
+          description: The Message does not belong to this Room.
+        "401":
+          description: Authentication is required.
+        "403":
+          description: The current User cannot view the Room.
   /health:
     get:
       operationId: getHealth
@@ -597,6 +658,18 @@ components:
           type: boolean
         has_more_after:
           type: boolean
+    RoomReadState:
+      type: object
+      required: [unread_count]
+      properties:
+        last_read_message_id:
+          type: string
+          format: uuid
+        cursor:
+          type: string
+        unread_count:
+          type: integer
+          minimum: 0
     AuthenticatedUser:
       type: object
       required: [user, needs_handle]

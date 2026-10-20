@@ -4,7 +4,7 @@
   "title": "Skyroom message.created event",
   "type": "object",
   "additionalProperties": false,
-  "required": ["event_id", "type", "occurred_at", "community_id", "room_id", "actor_id", "schema_version", "payload"],
+  "required": ["event_id", "type", "occurred_at", "community_id", "room_id", "actor_id", "schema_version", "cursor", "payload"],
   "properties": {
     "event_id": { "type": "string", "format": "uuid" },
     "type": { "const": "message.created" },
@@ -13,6 +13,7 @@
     "room_id": { "type": "string", "format": "uuid" },
     "actor_id": { "type": "string", "format": "uuid" },
     "schema_version": { "const": 1 },
+    "cursor": { "type": "string", "minLength": 1 },
     "payload": {
       "type": "object",
       "additionalProperties": false,

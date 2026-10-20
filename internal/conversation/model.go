@@ -35,6 +35,7 @@ type Message struct {
 type PostResult struct {
 	Message   Message `json:"message"`
 	Duplicate bool    `json:"duplicate"`
+	EventID   string  `json:"-"`
 }
 
 type HistoryPage struct {
@@ -61,8 +62,16 @@ type HistoryResult struct {
 	HasMore  bool
 }
 
+type ReadState struct {
+	LastReadMessageID string `json:"last_read_message_id,omitempty"`
+	Cursor            string `json:"cursor,omitempty"`
+	UnreadCount       int    `json:"unread_count"`
+}
+
 type Store interface {
 	permission.RoomStore
 	CreateMessage(ctx context.Context, userID, authorHandle, roomID, idempotencyKey, body string, now time.Time) (PostResult, error)
 	ListMessages(ctx context.Context, roomID string, query HistoryQuery) (HistoryResult, error)
+	GetReadState(ctx context.Context, userID, roomID string) (ReadState, error)
+	MarkRead(ctx context.Context, userID, roomID, messageID string, now time.Time) (ReadState, error)
 }

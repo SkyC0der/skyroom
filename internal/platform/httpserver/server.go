@@ -72,9 +72,12 @@ func New(logger *slog.Logger, webOrigin string, options ...Option) http.Handler 
 		mux.HandleFunc("POST /api/v1/invitations/{token}/join", communities.joinInvitation)
 	}
 	if configuration.conversation != nil {
-		conversations := conversationHandlers{service: configuration.conversation}
+		conversations := conversationHandlers{service: configuration.conversation, webOrigin: webOrigin}
 		mux.HandleFunc("GET /api/v1/rooms/{roomID}/messages", conversations.history)
 		mux.HandleFunc("POST /api/v1/rooms/{roomID}/messages", conversations.post)
+		mux.HandleFunc("GET /api/v1/rooms/{roomID}/events", conversations.events)
+		mux.HandleFunc("GET /api/v1/rooms/{roomID}/read-state", conversations.readState)
+		mux.HandleFunc("PUT /api/v1/rooms/{roomID}/read-state", conversations.markRead)
 	}
 
 	return recoverPanic(logger, requestLog(logger, cors(webOrigin, enforceOrigin(webOrigin, mux))))

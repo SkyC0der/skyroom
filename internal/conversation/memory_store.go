@@ -20,10 +20,56 @@ type MemoryStore struct {
 	rooms       memoryRoomStore
 	messages    map[string][]Message
 	idempotency map[string]Message
+	readCursors map[string]Cursor
 }
 
 func NewMemoryStore(rooms memoryRoomStore) *MemoryStore {
-	return &MemoryStore{rooms: rooms, messages: make(map[string][]Message), idempotency: make(map[string]Message)}
+	return &MemoryStore{
+		rooms: rooms, messages: make(map[string][]Message), idempotency: make(map[string]Message),
+		readCursors: make(map[string]Cursor),
+	}
+}
+
+func (s *MemoryStore) GetReadState(_ context.Context, userID, roomID string) (ReadState, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.readStateLocked(userID, roomID), nil
+}
+
+func (s *MemoryStore) MarkRead(_ context.Context, userID, roomID, messageID string, _ time.Time) (ReadState, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var selected *Message
+	for index := range s.messages[roomID] {
+		if s.messages[roomID][index].ID == messageID {
+			selected = &s.messages[roomID][index]
+			break
+		}
+	}
+	if selected == nil {
+		return ReadState{}, ErrInvalidCursor
+	}
+	key := userID + ":" + roomID
+	next := Cursor{CreatedAt: selected.CreatedAt, ID: selected.ID}
+	if current, ok := s.readCursors[key]; !ok || cursorLess(current, next) {
+		s.readCursors[key] = next
+	}
+	return s.readStateLocked(userID, roomID), nil
+}
+
+func (s *MemoryStore) readStateLocked(userID, roomID string) ReadState {
+	state := ReadState{}
+	cursor, hasCursor := s.readCursors[userID+":"+roomID]
+	if hasCursor {
+		state.LastReadMessageID = cursor.ID
+		state.Cursor = encodeCursor(Message{ID: cursor.ID, CreatedAt: cursor.CreatedAt})
+	}
+	for _, message := range s.messages[roomID] {
+		if !hasCursor || messageAfterCursor(message, cursor) {
+			state.UnreadCount++
+		}
+	}
+	return state
 }
 
 func (s *MemoryStore) HasRoomCapability(ctx context.Context, userID, roomID string, capability permission.Capability) (bool, error) {
@@ -98,4 +144,8 @@ func messageBeforeCursor(message Message, cursor Cursor) bool {
 
 func messageAfterCursor(message Message, cursor Cursor) bool {
 	return message.CreatedAt.After(cursor.CreatedAt) || (message.CreatedAt.Equal(cursor.CreatedAt) && message.ID > cursor.ID)
+}
+
+func cursorLess(left, right Cursor) bool {
+	return left.CreatedAt.Before(right.CreatedAt) || (left.CreatedAt.Equal(right.CreatedAt) && left.ID < right.ID)
 }
