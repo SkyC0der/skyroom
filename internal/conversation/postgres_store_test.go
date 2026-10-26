@@ -66,6 +66,33 @@ func TestPostgresMessageAndOutboxCommitAtomically(t *testing.T) {
 	if envelope.Type != "message.created" || envelope.Cursor == "" || envelope.Payload.Message.ID != posted.Message.ID {
 		t.Fatalf("unexpected outbox envelope: %+v", envelope)
 	}
+	edited, err := service.Update(ctx, memberToken, created.GeneralRoom.ID, posted.Message.ID, "Durable edited message", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if edited.Message.Revision != 2 || edited.Message.EditedAt == nil {
+		t.Fatalf("unexpected PostgreSQL edit: %+v", edited)
+	}
+	deleted, err := service.Delete(ctx, memberToken, created.GeneralRoom.ID, posted.Message.ID, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted.Message.Revision != 3 || deleted.Message.DeletedAt == nil || deleted.Message.Body != "" {
+		t.Fatalf("unexpected PostgreSQL tombstone: %+v", deleted)
+	}
+	var revisionCount int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM message_revisions WHERE message_id = $1`, posted.Message.ID).Scan(&revisionCount); err != nil {
+		t.Fatal(err)
+	}
+	if revisionCount != 3 {
+		t.Fatalf("expected three durable revisions, got %d", revisionCount)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM outbox_events WHERE aggregate_id = $1`, posted.Message.ID).Scan(&eventCount); err != nil {
+		t.Fatal(err)
+	}
+	if eventCount != 3 {
+		t.Fatalf("expected create, update, and delete events, got %d", eventCount)
+	}
 	readState, err := service.ReadState(ctx, memberToken, created.GeneralRoom.ID)
 	if err != nil || readState.UnreadCount != 1 {
 		t.Fatalf("unexpected initial PostgreSQL read state: state=%+v err=%v", readState, err)

@@ -74,7 +74,23 @@ func TestConversationHTTPFlow(t *testing.T) {
 		t.Fatalf("unexpected repeat response: %+v", repeated)
 	}
 
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/rooms/"+created.GeneralRoom.ID+"/messages?limit=20", nil)
+	request := httptest.NewRequest(http.MethodPatch, "/api/v1/rooms/"+created.GeneralRoom.ID+"/messages/"+posted.Message.ID, strings.NewReader(`{"body":"Hello, edited room.","expected_revision":1}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.AddCookie(cookie)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("edit message: status=%d body=%s", response.Code, response.Body.String())
+	}
+	var edited conversation.MutationResult
+	if err := json.NewDecoder(response.Body).Decode(&edited); err != nil {
+		t.Fatal(err)
+	}
+	if edited.Message.Body != "Hello, edited room." || edited.Message.Revision != 2 || edited.Message.EditedAt == nil {
+		t.Fatalf("unexpected edited message: %+v", edited)
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/api/v1/rooms/"+created.GeneralRoom.ID+"/messages?limit=20", nil)
 	request.AddCookie(cookie)
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
@@ -85,7 +101,7 @@ func TestConversationHTTPFlow(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&page); err != nil {
 		t.Fatal(err)
 	}
-	if len(page.Messages) != 1 || page.Messages[0].Body != "Hello, room." || page.LatestCursor == "" {
+	if len(page.Messages) != 1 || page.Messages[0].Body != "Hello, edited room." || page.LatestCursor == "" {
 		t.Fatalf("unexpected history: %+v", page)
 	}
 
@@ -116,6 +132,22 @@ func TestConversationHTTPFlow(t *testing.T) {
 	}
 	if readState.UnreadCount != 0 || readState.LastReadMessageID != posted.Message.ID {
 		t.Fatalf("unexpected marked read state: %+v", readState)
+	}
+
+	request = httptest.NewRequest(http.MethodDelete, "/api/v1/rooms/"+created.GeneralRoom.ID+"/messages/"+posted.Message.ID, strings.NewReader(`{"expected_revision":2}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.AddCookie(cookie)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("delete message: status=%d body=%s", response.Code, response.Body.String())
+	}
+	var deleted conversation.MutationResult
+	if err := json.NewDecoder(response.Body).Decode(&deleted); err != nil {
+		t.Fatal(err)
+	}
+	if deleted.Message.Body != "" || deleted.Message.Revision != 3 || deleted.Message.DeletedAt == nil {
+		t.Fatalf("unexpected deleted message: %+v", deleted)
 	}
 }
 

@@ -338,16 +338,71 @@ paths:
           description: The current User cannot send Messages in the Room.
         "409":
           description: The idempotency key was reused with different Message content.
+  /rooms/{room_id}/messages/{message_id}:
+    patch:
+      operationId: updateRoomMessage
+      summary: Replace the current User's Message body with a new revision
+      parameters:
+        - $ref: "#/components/parameters/RoomID"
+        - $ref: "#/components/parameters/MessageID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageUpdate"
+      responses:
+        "200":
+          description: The new revision and its outbox event committed atomically.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageMutationResult"
+        "400":
+          description: The Message ID, body, or expected revision is invalid.
+        "401":
+          description: Authentication is required.
+        "403":
+          description: Only the active author can edit the Message.
+        "409":
+          description: The expected revision is stale or the Message is already deleted.
+    delete:
+      operationId: deleteRoomMessage
+      summary: Replace the current User's Message with a durable tombstone
+      parameters:
+        - $ref: "#/components/parameters/RoomID"
+        - $ref: "#/components/parameters/MessageID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageDelete"
+      responses:
+        "200":
+          description: The tombstone revision and its outbox event committed atomically.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageMutationResult"
+        "400":
+          description: The Message ID or expected revision is invalid.
+        "401":
+          description: Authentication is required.
+        "403":
+          description: Only the active author can delete the Message.
+        "409":
+          description: The expected revision is stale or the Message is already deleted.
   /rooms/{room_id}/events:
     get:
       operationId: subscribeRoomEvents
       summary: Upgrade to an authorized WebSocket stream of committed Room events
-      description: Clients recover any delivery gap through the Message history endpoint using the event cursor.
+      description: Clients recover created-Message gaps with the event cursor and reconcile revisions from current Message history.
       parameters:
         - $ref: "#/components/parameters/RoomID"
       responses:
         "101":
-          description: The connection was upgraded. Events conform to contracts/events/message.created.schema.json.
+          description: The connection was upgraded. Events conform to the message.created, message.updated, or message.deleted schemas in contracts/events.
         "401":
           description: Authentication is required.
         "403":
@@ -462,6 +517,13 @@ components:
         format: uuid
     RoomID:
       name: room_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    MessageID:
+      name: message_id
       in: path
       required: true
       schema:
@@ -715,6 +777,38 @@ components:
         created_at:
           type: string
           format: date-time
+        edited_at:
+          type: string
+          format: date-time
+        deleted_at:
+          type: string
+          format: date-time
+    MessageUpdate:
+      type: object
+      additionalProperties: false
+      required: [body, expected_revision]
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        expected_revision:
+          type: integer
+          minimum: 1
+    MessageDelete:
+      type: object
+      additionalProperties: false
+      required: [expected_revision]
+      properties:
+        expected_revision:
+          type: integer
+          minimum: 1
+    MessageMutationResult:
+      type: object
+      required: [message]
+      properties:
+        message:
+          $ref: "#/components/schemas/Message"
     MessagePostResult:
       type: object
       required: [message, duplicate]

@@ -16,16 +16,17 @@ type memoryRoomStore interface {
 }
 
 type MemoryStore struct {
-	mu          sync.Mutex
-	rooms       memoryRoomStore
-	messages    map[string][]Message
-	idempotency map[string]Message
-	readCursors map[string]Cursor
+	mu            sync.Mutex
+	rooms         memoryRoomStore
+	messages      map[string][]Message
+	idempotency   map[string]Message
+	initialBodies map[string]string
+	readCursors   map[string]Cursor
 }
 
 func NewMemoryStore(rooms memoryRoomStore) *MemoryStore {
 	return &MemoryStore{
-		rooms: rooms, messages: make(map[string][]Message), idempotency: make(map[string]Message),
+		rooms: rooms, messages: make(map[string][]Message), idempotency: make(map[string]Message), initialBodies: make(map[string]string),
 		readCursors: make(map[string]Cursor),
 	}
 }
@@ -85,7 +86,7 @@ func (s *MemoryStore) CreateMessage(ctx context.Context, userID, authorHandle, r
 	defer s.mu.Unlock()
 	key := userID + ":" + idempotencyKey
 	if existing, ok := s.idempotency[key]; ok {
-		if existing.RoomID != roomID || existing.Body != body {
+		if existing.RoomID != roomID || s.initialBodies[key] != body {
 			return PostResult{}, ErrIdempotencyConflict
 		}
 		return PostResult{Message: existing, Duplicate: true}, nil
@@ -100,7 +101,50 @@ func (s *MemoryStore) CreateMessage(ctx context.Context, userID, authorHandle, r
 	}
 	s.messages[roomID] = append(s.messages[roomID], message)
 	s.idempotency[key] = message
+	s.initialBodies[key] = body
 	return PostResult{Message: message}, nil
+}
+
+func (s *MemoryStore) UpdateMessage(_ context.Context, userID, roomID, messageID, body string, expectedRevision int, now time.Time) (MutationResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.mutateMessageLocked(userID, roomID, messageID, body, expectedRevision, now, false)
+}
+
+func (s *MemoryStore) DeleteMessage(_ context.Context, userID, roomID, messageID string, expectedRevision int, now time.Time) (MutationResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.mutateMessageLocked(userID, roomID, messageID, "", expectedRevision, now, true)
+}
+
+func (s *MemoryStore) mutateMessageLocked(userID, roomID, messageID, body string, expectedRevision int, now time.Time, deleting bool) (MutationResult, error) {
+	for index := range s.messages[roomID] {
+		message := &s.messages[roomID][index]
+		if message.ID != messageID {
+			continue
+		}
+		if message.AuthorUserID != userID {
+			return MutationResult{}, ErrNotAuthorized
+		}
+		if message.Revision != expectedRevision || message.DeletedAt != nil {
+			return MutationResult{}, ErrRevisionConflict
+		}
+		message.Revision++
+		message.Body = body
+		if deleting {
+			message.DeletedAt = &now
+		} else {
+			message.EditedAt = &now
+		}
+		key := userID + ":" + message.ClientIdempotencyKey
+		s.idempotency[key] = *message
+		eventID, err := platformid.New()
+		if err != nil {
+			return MutationResult{}, err
+		}
+		return MutationResult{Message: *message, EventID: eventID}, nil
+	}
+	return MutationResult{}, ErrNotAuthorized
 }
 
 func (s *MemoryStore) ListMessages(_ context.Context, roomID string, query HistoryQuery) (HistoryResult, error) {

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rooms.studioeco.co/contracts/events/message.updated.schema.json",
+  "title": "Skyroom message.updated event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["event_id", "type", "occurred_at", "community_id", "room_id", "actor_id", "schema_version", "cursor", "payload"],
+  "properties": {
+    "event_id": { "type": "string", "format": "uuid" },
+    "type": { "const": "message.updated" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "community_id": { "type": "string", "format": "uuid" },
+    "room_id": { "type": "string", "format": "uuid" },
+    "actor_id": { "type": "string", "format": "uuid" },
+    "schema_version": { "const": 1 },
+    "cursor": { "type": "string", "minLength": 1 },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["message"],
+      "properties": {
+        "message": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "community_id", "room_id", "author_user_id", "author_handle", "client_idempotency_key", "body", "revision", "created_at", "edited_at"],
+          "properties": {
+            "id": { "type": "string", "format": "uuid" },
+            "community_id": { "type": "string", "format": "uuid" },
+            "room_id": { "type": "string", "format": "uuid" },
+            "author_user_id": { "type": "string", "format": "uuid" },
+            "author_handle": { "type": "string" },
+            "client_idempotency_key": { "type": "string" },
+            "body": { "type": "string", "minLength": 1, "maxLength": 4000 },
+            "revision": { "type": "integer", "minimum": 2 },
+            "created_at": { "type": "string", "format": "date-time" },
+            "edited_at": { "type": "string", "format": "date-time" }
+          }
+        }
+      }
+    }
+  }
+}

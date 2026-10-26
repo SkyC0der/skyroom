@@ -680,6 +680,40 @@ button:disabled {
   line-height: 1.45;
 }
 
+.room-message__tombstone {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.message-actions,
+.message-edit > div {
+  display: flex;
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.message-actions button,
+.message-edit button {
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+}
+
+.message-edit textarea {
+  width: 100%;
+  min-height: 72px;
+  padding: 9px;
+  resize: vertical;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+}
+
 .retry-message {
   min-height: 32px;
   margin-top: 8px;

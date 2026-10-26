@@ -221,7 +221,7 @@ func (s *PostgresStore) CreateRoom(ctx context.Context, userID, communityID, nam
 		}
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO audit_events (id, community_id, actor_member_id, action, target_type, target_id, metadata, created_at)
-			VALUES ($1, $2, $3, 'room.created', 'room', $4, jsonb_build_object('name', $5, 'kind', 'text', 'visibility', 'members'), $6)`,
+			VALUES ($1, $2, $3, 'room.created', 'room', $4, jsonb_build_object('name', $5::text, 'kind', 'text', 'visibility', 'members'), $6)`,
 			auditID, communityID, memberID, roomID, name, now); err != nil {
 			return fmt.Errorf("insert room audit event: %w", err)
 		}

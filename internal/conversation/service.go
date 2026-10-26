@@ -66,6 +66,55 @@ func (s *Service) Post(ctx context.Context, sessionToken, roomID, idempotencyKey
 	return result, nil
 }
 
+func (s *Service) Update(ctx context.Context, sessionToken, roomID, messageID, body string, expectedRevision int) (MutationResult, error) {
+	if !platformid.IsValid(messageID) || expectedRevision < 1 || !validMessageBody(body) {
+		return MutationResult{}, ErrInvalidMessage
+	}
+	authenticated, err := s.authorize(ctx, sessionToken, roomID, permission.SendMessage)
+	if err != nil {
+		return MutationResult{}, err
+	}
+	result, err := s.store.UpdateMessage(ctx, authenticated.User.ID, roomID, messageID, body, expectedRevision, s.now().UTC())
+	if err != nil {
+		return MutationResult{}, err
+	}
+	s.publishMutation("message.updated", result)
+	return result, nil
+}
+
+func (s *Service) Delete(ctx context.Context, sessionToken, roomID, messageID string, expectedRevision int) (MutationResult, error) {
+	if !platformid.IsValid(messageID) || expectedRevision < 1 {
+		return MutationResult{}, ErrInvalidMessage
+	}
+	authenticated, err := s.authorize(ctx, sessionToken, roomID, permission.SendMessage)
+	if err != nil {
+		return MutationResult{}, err
+	}
+	result, err := s.store.DeleteMessage(ctx, authenticated.User.ID, roomID, messageID, expectedRevision, s.now().UTC())
+	if err != nil {
+		return MutationResult{}, err
+	}
+	s.publishMutation("message.deleted", result)
+	return result, nil
+}
+
+func (s *Service) publishMutation(eventType string, result MutationResult) {
+	occurredAt := result.Message.EditedAt
+	if result.Message.DeletedAt != nil {
+		occurredAt = result.Message.DeletedAt
+	}
+	if occurredAt == nil {
+		now := s.now().UTC()
+		occurredAt = &now
+	}
+	s.broker.Publish(Event{
+		EventID: result.EventID, Type: eventType, OccurredAt: *occurredAt,
+		CommunityID: result.Message.CommunityID, RoomID: result.Message.RoomID,
+		ActorID: result.Message.AuthorUserID, SchemaVersion: 1,
+		Cursor: encodeCursor(result.Message), Payload: Payload{Message: result.Message},
+	})
+}
+
 func (s *Service) Subscribe(ctx context.Context, sessionToken, roomID string) (Subscription, error) {
 	authenticated, err := s.auth.Authenticate(ctx, sessionToken)
 	if err != nil {

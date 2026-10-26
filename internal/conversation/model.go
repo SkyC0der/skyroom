@@ -13,6 +13,7 @@ var (
 	ErrNotAuthorized       = errors.New("not authorized")
 	ErrIdempotencyConflict = errors.New("idempotency key reused with different content")
 	ErrInvalidCursor       = errors.New("invalid conversation cursor")
+	ErrRevisionConflict    = errors.New("message revision conflict")
 )
 
 const (
@@ -21,15 +22,22 @@ const (
 )
 
 type Message struct {
-	ID                   string    `json:"id"`
-	CommunityID          string    `json:"community_id"`
-	RoomID               string    `json:"room_id"`
-	AuthorUserID         string    `json:"author_user_id"`
-	AuthorHandle         string    `json:"author_handle"`
-	ClientIdempotencyKey string    `json:"client_idempotency_key"`
-	Body                 string    `json:"body"`
-	Revision             int       `json:"revision"`
-	CreatedAt            time.Time `json:"created_at"`
+	ID                   string     `json:"id"`
+	CommunityID          string     `json:"community_id"`
+	RoomID               string     `json:"room_id"`
+	AuthorUserID         string     `json:"author_user_id"`
+	AuthorHandle         string     `json:"author_handle"`
+	ClientIdempotencyKey string     `json:"client_idempotency_key"`
+	Body                 string     `json:"body"`
+	Revision             int        `json:"revision"`
+	CreatedAt            time.Time  `json:"created_at"`
+	EditedAt             *time.Time `json:"edited_at,omitempty"`
+	DeletedAt            *time.Time `json:"deleted_at,omitempty"`
+}
+
+type MutationResult struct {
+	Message Message `json:"message"`
+	EventID string  `json:"-"`
 }
 
 type PostResult struct {
@@ -71,6 +79,8 @@ type ReadState struct {
 type Store interface {
 	permission.RoomStore
 	CreateMessage(ctx context.Context, userID, authorHandle, roomID, idempotencyKey, body string, now time.Time) (PostResult, error)
+	UpdateMessage(ctx context.Context, userID, roomID, messageID, body string, expectedRevision int, now time.Time) (MutationResult, error)
+	DeleteMessage(ctx context.Context, userID, roomID, messageID string, expectedRevision int, now time.Time) (MutationResult, error)
 	ListMessages(ctx context.Context, roomID string, query HistoryQuery) (HistoryResult, error)
 	GetReadState(ctx context.Context, userID, roomID string) (ReadState, error)
 	MarkRead(ctx context.Context, userID, roomID, messageID string, now time.Time) (ReadState, error)

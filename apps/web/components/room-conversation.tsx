@@ -9,12 +9,18 @@ type ConnectionState = "connecting" | "live" | "recovering";
 
 type Message = {
   id: string;
+  community_id: string;
   room_id: string;
+  author_user_id: string;
   author_handle: string;
   client_idempotency_key: string;
   body: string;
+  revision: number;
   created_at: string;
+  edited_at?: string;
+  deleted_at?: string;
   state: MessageState;
+  mutation?: "editing" | "deleting";
 };
 
 type ServerMessage = Omit<Message, "state">;
@@ -29,7 +35,7 @@ type HistoryPage = {
 
 type RoomEvent = {
   event_id: string;
-  type: "message.created";
+  type: "message.created" | "message.updated" | "message.deleted";
   room_id: string;
   cursor: string;
   payload: { message: ServerMessage };
@@ -38,7 +44,10 @@ type RoomEvent = {
 function mergeMessages(current: Message[], incoming: ServerMessage[]) {
   const byClientKey = new Map(current.map((message) => [message.client_idempotency_key, message]));
   for (const message of incoming) {
-    byClientKey.set(message.client_idempotency_key, { ...message, state: "acknowledged" });
+    const existing = byClientKey.get(message.client_idempotency_key);
+    if (!existing || existing.state !== "acknowledged" || message.revision >= existing.revision) {
+      byClientKey.set(message.client_idempotency_key, { ...message, state: "acknowledged" });
+    }
   }
   return [...byClientKey.values()].sort((left, right) => {
     const timeOrder = new Date(left.created_at).getTime() - new Date(right.created_at).getTime();
@@ -64,6 +73,8 @@ export function RoomConversation({ roomID, roomName, communityName, userHandle }
   const [unreadAtOpen, setUnreadAtOpen] = useState(0);
   const [readBoundaryID, setReadBoundaryID] = useState("");
   const [error, setError] = useState("");
+  const [editingID, setEditingID] = useState("");
+  const [editBody, setEditBody] = useState("");
   const historyRef = useRef<HTMLDivElement>(null);
   const latestCursorRef = useRef("");
   const markedReadIDRef = useRef("");
@@ -124,6 +135,11 @@ export function RoomConversation({ roomID, roomName, communityName, userHandle }
           }
           if (!page.has_more_after || !page.latest_cursor) break;
         } while (active);
+        const currentResponse = await fetch(`${apiBase}/api/v1/rooms/${roomID}/messages?limit=100`, { credentials: "include" });
+        if (currentResponse.ok) {
+          const currentPage = (await currentResponse.json()) as HistoryPage;
+          if (active) acceptMessages(currentPage.messages ?? []);
+        }
         if (active) setConnection("live");
       } catch {
         if (active) setConnection("recovering");
@@ -177,12 +193,14 @@ export function RoomConversation({ roomID, roomName, communityName, userHandle }
       };
       socket.onmessage = (rawEvent) => {
         const event = JSON.parse(rawEvent.data as string) as RoomEvent;
-        if (event.type !== "message.created" || event.room_id !== roomID) return;
+        if (!event.type.startsWith("message.") || event.room_id !== roomID) return;
         const shouldFollow = nearBottom() || event.payload.message.author_handle === userHandle;
         acceptMessages([event.payload.message]);
-        latestCursorRef.current = event.cursor;
-        if (shouldFollow) requestAnimationFrame(() => scrollToLatest());
-        else setUnreadLiveCount((count) => count + 1);
+        if (event.type === "message.created") {
+          latestCursorRef.current = event.cursor;
+          if (shouldFollow) requestAnimationFrame(() => scrollToLatest());
+          else setUnreadLiveCount((count) => count + 1);
+        }
       };
       socket.onclose = () => {
         if (!active) return;
@@ -274,10 +292,13 @@ export function RoomConversation({ roomID, roomName, communityName, userHandle }
     const clientKey = window.crypto.randomUUID();
     const pending: Message = {
       id: `pending-${clientKey}`,
+      community_id: "",
       room_id: roomID,
+      author_user_id: "",
       author_handle: userHandle,
       client_idempotency_key: clientKey,
       body: trimmedBody,
+      revision: 1,
       created_at: new Date().toISOString(),
       state: "pending",
     };
@@ -297,6 +318,60 @@ export function RoomConversation({ roomID, roomName, communityName, userHandle }
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       event.currentTarget.form?.requestSubmit();
+    }
+  }
+
+  function beginEdit(message: Message) {
+    setEditingID(message.id);
+    setEditBody(message.body);
+    setError("");
+  }
+
+  async function saveEdit(message: Message) {
+    const trimmedBody = editBody.trim();
+    if (!trimmedBody || trimmedBody === message.body) {
+      setEditingID("");
+      return;
+    }
+    const previous = message;
+    const optimistic = { ...message, body: trimmedBody, revision: message.revision + 1, edited_at: new Date().toISOString(), mutation: "editing" as const };
+    setMessages((current) => current.map((item) => item.id === message.id ? optimistic : item));
+    setEditingID("");
+    try {
+      const response = await fetch(`${apiBase}/api/v1/rooms/${roomID}/messages/${message.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: trimmedBody, expected_revision: message.revision }),
+      });
+      if (!response.ok) throw new Error("edit failed");
+      const result = (await response.json()) as { message: ServerMessage };
+      setMessages((current) => mergeMessages(current, [result.message]));
+    } catch {
+      setMessages((current) => current.map((item) => item.id === message.id && item.mutation === "editing" ? previous : item));
+      setError("That Message could not be edited. It may have changed; try again.");
+    }
+  }
+
+  async function deleteMessage(message: Message) {
+    const previous = message;
+    const optimistic = { ...message, body: "", revision: message.revision + 1, deleted_at: new Date().toISOString(), mutation: "deleting" as const };
+    setMessages((current) => current.map((item) => item.id === message.id ? optimistic : item));
+    setEditingID("");
+    setError("");
+    try {
+      const response = await fetch(`${apiBase}/api/v1/rooms/${roomID}/messages/${message.id}`, {
+        method: "DELETE",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expected_revision: message.revision }),
+      });
+      if (!response.ok) throw new Error("delete failed");
+      const result = (await response.json()) as { message: ServerMessage };
+      setMessages((current) => mergeMessages(current, [result.message]));
+    } catch {
+      setMessages((current) => current.map((item) => item.id === message.id && item.mutation === "deleting" ? previous : item));
+      setError("That Message could not be deleted. It may have changed; try again.");
     }
   }
 
@@ -320,8 +395,17 @@ export function RoomConversation({ roomID, roomName, communityName, userHandle }
               <strong>@{message.author_handle}</strong>
               <time dateTime={message.created_at}>{new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>
               {message.state !== "acknowledged" && <span>{message.state === "pending" ? "Sending…" : "Not sent"}</span>}
+              {message.edited_at && !message.deleted_at && <span>Edited</span>}
             </div>
-            <p>{message.body}</p>
+            {message.deleted_at ? <p className="room-message__tombstone">Message deleted</p> : editingID === message.id ? (
+              <form className="message-edit" onSubmit={(event) => { event.preventDefault(); void saveEdit(message); }}>
+                <textarea required maxLength={4000} value={editBody} onChange={(event) => setEditBody(event.target.value)} autoFocus />
+                <div><button type="submit" disabled={!editBody.trim()}>Save</button><button type="button" onClick={() => setEditingID("")}>Cancel</button></div>
+              </form>
+            ) : <p>{message.body}</p>}
+            {message.state === "acknowledged" && !message.deleted_at && message.author_handle === userHandle && editingID !== message.id && (
+              <div className="message-actions"><button type="button" disabled={Boolean(message.mutation)} onClick={() => beginEdit(message)}>Edit</button><button type="button" disabled={Boolean(message.mutation)} onClick={() => void deleteMessage(message)}>Delete</button></div>
+            )}
             {message.state === "failed" && <button className="retry-message" type="button" onClick={() => retryMessage(message)}>Retry</button>}
           </article>
         ))}

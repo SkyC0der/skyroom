@@ -189,3 +189,74 @@ func TestReadStateCountsUnreadAndNeverMovesBackward(t *testing.T) {
 		t.Fatalf("expected invalid read cursor, got %v", err)
 	}
 }
+
+func TestMessageMutationsPreserveHistoryAndPublishRevisions(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	sender := &testSender{}
+	auth := identity.NewService(identity.NewMemoryStore(), sender, "test-secret")
+	communities := community.NewMemoryStore()
+	communityService := community.NewService(communities, auth)
+	service := NewService(NewMemoryStore(communities), auth)
+	ownerToken := verifiedUser(t, auth, sender, "edit-owner@example.com", "edit.owner")
+	created, err := communityService.Create(ctx, ownerToken, "Editors", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	invitation, err := communityService.CreateInvitation(ctx, ownerToken, created.Community.ID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	memberToken := verifiedUser(t, auth, sender, "edit-member@example.com", "edit.member")
+	if _, err := communityService.Join(ctx, memberToken, invitation.Token); err != nil {
+		t.Fatal(err)
+	}
+	posted, err := service.Post(ctx, ownerToken, created.GeneralRoom.ID, "edit-client-key", "Original")
+	if err != nil {
+		t.Fatal(err)
+	}
+	subscription, err := service.Subscribe(ctx, ownerToken, created.GeneralRoom.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer subscription.Cancel()
+
+	editedAt := time.Date(2026, 10, 25, 9, 0, 0, 0, time.UTC)
+	service.now = func() time.Time { return editedAt }
+	edited, err := service.Update(ctx, ownerToken, created.GeneralRoom.ID, posted.Message.ID, "Corrected", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if edited.Message.Revision != 2 || edited.Message.Body != "Corrected" || edited.Message.EditedAt == nil || !edited.Message.EditedAt.Equal(editedAt) {
+		t.Fatalf("unexpected edit: %+v", edited)
+	}
+	if event := <-subscription.Events; event.Type != "message.updated" || event.Payload.Message.Revision != 2 {
+		t.Fatalf("unexpected edit event: %+v", event)
+	}
+	if _, err := service.Update(ctx, ownerToken, created.GeneralRoom.ID, posted.Message.ID, "Stale", 1); !errors.Is(err, ErrRevisionConflict) {
+		t.Fatalf("expected stale revision conflict, got %v", err)
+	}
+	if _, err := service.Update(ctx, memberToken, created.GeneralRoom.ID, posted.Message.ID, "Hijacked", 2); !errors.Is(err, ErrNotAuthorized) {
+		t.Fatalf("expected author authorization failure, got %v", err)
+	}
+
+	deletedAt := editedAt.Add(time.Minute)
+	service.now = func() time.Time { return deletedAt }
+	deleted, err := service.Delete(ctx, ownerToken, created.GeneralRoom.ID, posted.Message.ID, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted.Message.Revision != 3 || deleted.Message.Body != "" || deleted.Message.DeletedAt == nil || !deleted.Message.DeletedAt.Equal(deletedAt) {
+		t.Fatalf("unexpected tombstone: %+v", deleted)
+	}
+	if event := <-subscription.Events; event.Type != "message.deleted" || event.Payload.Message.DeletedAt == nil {
+		t.Fatalf("unexpected delete event: %+v", event)
+	}
+	page, err := service.History(ctx, memberToken, created.GeneralRoom.ID, "", "", 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Messages) != 1 || page.Messages[0].ID != posted.Message.ID || page.Messages[0].DeletedAt == nil {
+		t.Fatalf("expected stable tombstone in history, got %+v", page)
+	}
+}

@@ -105,6 +105,8 @@ func New(logger *slog.Logger, webOrigin string, options ...Option) http.Handler 
 		conversations := conversationHandlers{service: configuration.conversation, webOrigin: webOrigin}
 		mux.HandleFunc("GET /api/v1/rooms/{roomID}/messages", conversations.history)
 		mux.HandleFunc("POST /api/v1/rooms/{roomID}/messages", conversations.post)
+		mux.HandleFunc("PATCH /api/v1/rooms/{roomID}/messages/{messageID}", conversations.update)
+		mux.HandleFunc("DELETE /api/v1/rooms/{roomID}/messages/{messageID}", conversations.delete)
 		mux.HandleFunc("GET /api/v1/rooms/{roomID}/events", conversations.events)
 		mux.HandleFunc("GET /api/v1/rooms/{roomID}/read-state", conversations.readState)
 		mux.HandleFunc("PUT /api/v1/rooms/{roomID}/read-state", conversations.markRead)

@@ -67,23 +67,26 @@ func (s *PostgresStore) CreateMessage(ctx context.Context, userID, authorHandle,
 			INSERT INTO messages (id, community_id, room_id, author_member_id, client_idempotency_key, body, created_at)
 			VALUES ($1, $2, $3, $4, $5, $6, $7)
 			ON CONFLICT (author_member_id, client_idempotency_key) DO NOTHING
-			RETURNING id::text, community_id::text, room_id::text, client_idempotency_key, body, revision, created_at`,
+			RETURNING id::text, community_id::text, room_id::text, client_idempotency_key, body, revision, created_at, edited_at, deleted_at`,
 			messageID, result.Message.CommunityID, roomID, memberID, idempotencyKey, body, now,
-		).Scan(&result.Message.ID, &result.Message.CommunityID, &result.Message.RoomID, &result.Message.ClientIdempotencyKey, &result.Message.Body, &result.Message.Revision, &result.Message.CreatedAt)
+		).Scan(&result.Message.ID, &result.Message.CommunityID, &result.Message.RoomID, &result.Message.ClientIdempotencyKey, &result.Message.Body, &result.Message.Revision, &result.Message.CreatedAt, &result.Message.EditedAt, &result.Message.DeletedAt)
 		if errors.Is(err, pgx.ErrNoRows) {
 			result.Duplicate = true
+			var initialBody string
 			if err := tx.QueryRow(ctx, `
 				SELECT message.id::text, message.community_id::text, message.room_id::text,
 				       app_user.id::text, app_user.handle, message.client_idempotency_key,
-				       message.body, message.revision, message.created_at
+			       message.body, message.revision, message.created_at, message.edited_at, message.deleted_at,
+			       initial_revision.body
 				FROM messages message
 				JOIN members author ON author.id = message.author_member_id
 				JOIN users app_user ON app_user.id = author.user_id
+				JOIN message_revisions initial_revision ON initial_revision.message_id = message.id AND initial_revision.revision = 1
 				WHERE message.author_member_id = $1 AND message.client_idempotency_key = $2`, memberID, idempotencyKey,
-			).Scan(&result.Message.ID, &result.Message.CommunityID, &result.Message.RoomID, &result.Message.AuthorUserID, &result.Message.AuthorHandle, &result.Message.ClientIdempotencyKey, &result.Message.Body, &result.Message.Revision, &result.Message.CreatedAt); err != nil {
+			).Scan(&result.Message.ID, &result.Message.CommunityID, &result.Message.RoomID, &result.Message.AuthorUserID, &result.Message.AuthorHandle, &result.Message.ClientIdempotencyKey, &result.Message.Body, &result.Message.Revision, &result.Message.CreatedAt, &result.Message.EditedAt, &result.Message.DeletedAt, &initialBody); err != nil {
 				return fmt.Errorf("load idempotent message: %w", err)
 			}
-			if result.Message.RoomID != roomID || result.Message.Body != body {
+			if result.Message.RoomID != roomID || initialBody != body {
 				return ErrIdempotencyConflict
 			}
 			return nil
@@ -93,6 +96,11 @@ func (s *PostgresStore) CreateMessage(ctx context.Context, userID, authorHandle,
 		}
 		result.Message.AuthorUserID = userID
 		result.Message.AuthorHandle = authorHandle
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO message_revisions (message_id, revision, body, action, created_at)
+			VALUES ($1, 1, $2, 'created', $3)`, result.Message.ID, body, now); err != nil {
+			return fmt.Errorf("insert initial message revision: %w", err)
+		}
 		envelope := map[string]any{
 			"event_id": eventID, "type": "message.created", "occurred_at": now,
 			"community_id": result.Message.CommunityID, "room_id": roomID, "actor_id": userID,
@@ -114,11 +122,101 @@ func (s *PostgresStore) CreateMessage(ctx context.Context, userID, authorHandle,
 	return result, err
 }
 
+func (s *PostgresStore) UpdateMessage(ctx context.Context, userID, roomID, messageID, body string, expectedRevision int, now time.Time) (MutationResult, error) {
+	return s.mutateMessage(ctx, userID, roomID, messageID, body, expectedRevision, now, false)
+}
+
+func (s *PostgresStore) DeleteMessage(ctx context.Context, userID, roomID, messageID string, expectedRevision int, now time.Time) (MutationResult, error) {
+	return s.mutateMessage(ctx, userID, roomID, messageID, "", expectedRevision, now, true)
+}
+
+func (s *PostgresStore) mutateMessage(ctx context.Context, userID, roomID, messageID, body string, expectedRevision int, now time.Time, deleting bool) (MutationResult, error) {
+	eventID, err := platformid.New()
+	if err != nil {
+		return MutationResult{}, err
+	}
+	result := MutationResult{EventID: eventID}
+	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		err := tx.QueryRow(ctx, `
+			SELECT message.id::text, message.community_id::text, message.room_id::text,
+			       author_user.id::text, author_user.handle, message.client_idempotency_key,
+			       message.body, message.revision, message.created_at, message.edited_at, message.deleted_at
+			FROM messages message
+			JOIN members author ON author.id = message.author_member_id
+			JOIN users author_user ON author_user.id = author.user_id
+			WHERE message.room_id = $1 AND message.id = $2
+			  AND EXISTS (
+			      SELECT 1 FROM members actor
+			      WHERE actor.community_id = message.community_id AND actor.user_id = $3 AND actor.state = 'active'
+			  )
+			FOR UPDATE OF message`, roomID, messageID, userID,
+		).Scan(&result.Message.ID, &result.Message.CommunityID, &result.Message.RoomID,
+			&result.Message.AuthorUserID, &result.Message.AuthorHandle, &result.Message.ClientIdempotencyKey,
+			&result.Message.Body, &result.Message.Revision, &result.Message.CreatedAt,
+			&result.Message.EditedAt, &result.Message.DeletedAt)
+		if errors.Is(err, pgx.ErrNoRows) || (err == nil && result.Message.AuthorUserID != userID) {
+			return ErrNotAuthorized
+		}
+		if err != nil {
+			return fmt.Errorf("load message for mutation: %w", err)
+		}
+		if result.Message.Revision != expectedRevision || result.Message.DeletedAt != nil {
+			return ErrRevisionConflict
+		}
+
+		action := "updated"
+		eventKind := "message.updated"
+		if deleting {
+			action = "deleted"
+			eventKind = "message.deleted"
+		}
+		if deleting {
+			err = tx.QueryRow(ctx, `
+				UPDATE messages SET body = '', revision = revision + 1, deleted_at = $1
+				WHERE id = $2
+				RETURNING body, revision, edited_at, deleted_at`, now, messageID,
+			).Scan(&result.Message.Body, &result.Message.Revision, &result.Message.EditedAt, &result.Message.DeletedAt)
+		} else {
+			err = tx.QueryRow(ctx, `
+				UPDATE messages SET body = $1, revision = revision + 1, edited_at = $2
+				WHERE id = $3
+				RETURNING body, revision, edited_at, deleted_at`, body, now, messageID,
+			).Scan(&result.Message.Body, &result.Message.Revision, &result.Message.EditedAt, &result.Message.DeletedAt)
+		}
+		if err != nil {
+			return fmt.Errorf("mutate message: %w", err)
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO message_revisions (message_id, revision, body, action, created_at)
+			VALUES ($1, $2, $3, $4, $5)`, messageID, result.Message.Revision, result.Message.Body, action, now); err != nil {
+			return fmt.Errorf("insert message revision: %w", err)
+		}
+		envelope := map[string]any{
+			"event_id": eventID, "type": eventKind, "occurred_at": now,
+			"community_id": result.Message.CommunityID, "room_id": roomID, "actor_id": userID,
+			"schema_version": 1, "cursor": encodeCursor(result.Message),
+			"payload": map[string]any{"message": result.Message},
+		}
+		payload, err := json.Marshal(envelope)
+		if err != nil {
+			return fmt.Errorf("encode message mutation event: %w", err)
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO outbox_events (id, aggregate_id, community_id, room_id, event_kind, payload, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)`, eventID, messageID,
+			result.Message.CommunityID, roomID, eventKind, payload, now); err != nil {
+			return fmt.Errorf("insert message mutation outbox event: %w", err)
+		}
+		return nil
+	})
+	return result, err
+}
+
 func (s *PostgresStore) ListMessages(ctx context.Context, roomID string, query HistoryQuery) (HistoryResult, error) {
 	const selectMessages = `
 		SELECT message.id::text, message.community_id::text, message.room_id::text,
 		       app_user.id::text, app_user.handle, message.client_idempotency_key,
-		       message.body, message.revision, message.created_at
+		       message.body, message.revision, message.created_at, message.edited_at, message.deleted_at
 		FROM messages message
 		JOIN members author ON author.id = message.author_member_id
 		JOIN users app_user ON app_user.id = author.user_id`
@@ -144,7 +242,7 @@ func (s *PostgresStore) ListMessages(ctx context.Context, roomID string, query H
 	messages := make([]Message, 0, query.Limit+1)
 	for rows.Next() {
 		var message Message
-		if err := rows.Scan(&message.ID, &message.CommunityID, &message.RoomID, &message.AuthorUserID, &message.AuthorHandle, &message.ClientIdempotencyKey, &message.Body, &message.Revision, &message.CreatedAt); err != nil {
+		if err := rows.Scan(&message.ID, &message.CommunityID, &message.RoomID, &message.AuthorUserID, &message.AuthorHandle, &message.ClientIdempotencyKey, &message.Body, &message.Revision, &message.CreatedAt, &message.EditedAt, &message.DeletedAt); err != nil {
 			return HistoryResult{}, fmt.Errorf("scan message history: %w", err)
 		}
 		messages = append(messages, message)

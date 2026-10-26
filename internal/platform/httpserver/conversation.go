@@ -27,6 +27,15 @@ type markRoomReadRequest struct {
 	LastMessageID string `json:"last_message_id"`
 }
 
+type updateMessageRequest struct {
+	Body             string `json:"body"`
+	ExpectedRevision int    `json:"expected_revision"`
+}
+
+type deleteMessageRequest struct {
+	ExpectedRevision int `json:"expected_revision"`
+}
+
 func (h conversationHandlers) post(w http.ResponseWriter, r *http.Request) {
 	token, ok := readSessionToken(r)
 	if !ok {
@@ -73,6 +82,42 @@ func (h conversationHandlers) history(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, page)
+}
+
+func (h conversationHandlers) update(w http.ResponseWriter, r *http.Request) {
+	token, ok := readSessionToken(r)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthenticated"})
+		return
+	}
+	var request updateMessageRequest
+	if !decodeJSON(w, r, &request) {
+		return
+	}
+	result, err := h.service.Update(r.Context(), token, r.PathValue("roomID"), r.PathValue("messageID"), request.Body, request.ExpectedRevision)
+	if err != nil {
+		writeConversationError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h conversationHandlers) delete(w http.ResponseWriter, r *http.Request) {
+	token, ok := readSessionToken(r)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthenticated"})
+		return
+	}
+	var request deleteMessageRequest
+	if !decodeJSON(w, r, &request) {
+		return
+	}
+	result, err := h.service.Delete(r.Context(), token, r.PathValue("roomID"), r.PathValue("messageID"), request.ExpectedRevision)
+	if err != nil {
+		writeConversationError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (h conversationHandlers) events(w http.ResponseWriter, r *http.Request) {
@@ -171,6 +216,8 @@ func writeConversationError(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "not_authorized"})
 	case errors.Is(err, conversation.ErrIdempotencyConflict):
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "idempotency_conflict"})
+	case errors.Is(err, conversation.ErrRevisionConflict):
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "revision_conflict"})
 	default:
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "conversation_operation_failed"})
 	}
