@@ -11,3 +11,7 @@ bin/
 *.log
 *.tsbuildinfo
 .vercel/
+
+# Private product and design working material
+docs/
+design-system/

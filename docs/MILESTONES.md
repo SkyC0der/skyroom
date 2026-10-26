@@ -98,7 +98,7 @@ Goal: make Room conversations useful beyond the first Message.
 
 1. **M2.1 — Switch Communities and accessible Rooms** — membership-aware navigation and deep links. **Status: Complete.**
 2. **M2.2 — Create and configure a text Room** — owner flow backed by `CREATE_ROOM`, quotas, and audit event. **Status: Complete.**
-3. **M2.3 — Edit and delete Messages** — revision history, authorization, optimistic reconciliation, and tombstones. Blocked by M1.6.
+3. **M2.3 — Edit and delete Messages** — revision history, authorization, optimistic reconciliation, and tombstones. **Status: Complete.**
 4. **M2.4 — React and reply in Threads** — one-level root Threads and idempotent reactions. Blocked by M2.3.
 5. **M2.5 — Mention Members and notify them** — parsing, authorization-aware delivery, and preferences. Blocked by M2.1.
 6. **M2.6 — Upload safe attachments** — signed upload, ownership, scan/quarantine state, and protected download. Blocked by M1.5.
